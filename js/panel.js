@@ -519,6 +519,10 @@
         .collapsible-btn-group:hover .hidden-btns { display: flex; }
         .collapsible-btn-group:hover .expand-toggle { display: none; }
         
+        /* 有返回状态时保持展开 */
+        .collapsible-btn-group.expanded .hidden-btns { display: flex; }
+        .collapsible-btn-group.expanded .expand-toggle { display: none; }
+        
         /* 左侧按钮组标题文本样式 */
                 .collapsible-btn-group .group-title {
                         margin-left: 10px;
@@ -547,6 +551,12 @@
                         
                         /* 添加红色发光阴影 (模拟霓虹灯效果) */
                         /* 参数解释: 水平偏移 垂直偏移 模糊半径 颜色 */
+                        text-shadow: 0 0 10px #ff3300, 0 0 20px #ff3300, 0 0 40px #ff3300;
+                }
+
+                /* 4. 按钮展开后（有返回状态时）标题保持红色发光 */
+                .collapsible-btn-group.expanded .group-title {
+                        color: #ff3300; 
                         text-shadow: 0 0 10px #ff3300, 0 0 20px #ff3300, 0 0 40px #ff3300;
                 }
 
@@ -1748,6 +1758,12 @@
           <path d="M20 4v7a4 4 0 0 1-4 4H4"></path>
         </svg>`;
       }
+      
+      // 让按钮组保持展开状态，方便点击返回
+      const btnGroup = document.getElementById('left-btn-group');
+      if (btnGroup) {
+        btnGroup.classList.add('expanded');
+      }
     }
     
     returnToCards() {
@@ -1766,6 +1782,12 @@
       // 同时隐藏提示词库浮动面板
       this.elements.promptLibraryPanel.classList.remove('visible');
       this.elements.configContent.style.display = 'block';
+      
+      // 移除按钮组的展开状态，恢复自动折叠
+      const btnGroup = document.getElementById('left-btn-group');
+      if (btnGroup) {
+        btnGroup.classList.remove('expanded');
+      }
     }
     
     restoreButtonIcon(btnId) {
@@ -2104,6 +2126,12 @@
         // 重置最大化状态
         this.promptLibraryMaximized = true;
         this.updateMaximizeButton();
+        
+        // 移除按钮组的展开状态，恢复自动折叠
+        const btnGroup = document.getElementById('left-btn-group');
+        if (btnGroup) {
+          btnGroup.classList.remove('expanded');
+        }
       } else {
         // 显示面板（默认最大化模式）
         // 先移动到正确位置（comfyui-panel-main 下，panel-content 之前）
@@ -2128,6 +2156,12 @@
         // 设置为最大化模式
         this.promptLibraryMaximized = true;
         this.updateMaximizeButton();
+        
+        // 让按钮组保持展开状态，方便点击返回
+        const btnGroup = document.getElementById('left-btn-group');
+        if (btnGroup) {
+          btnGroup.classList.add('expanded');
+        }
       }
     }
 

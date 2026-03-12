@@ -422,18 +422,19 @@ class LoraLoaderWithPath:
 # ---------------------------
 # 核心节点类
 # ---------------------------
+
 class StringRuleProcessor:
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
                 "input_string": ("STRING", {
-                    "multiline": False,      # 单行输入，如需多行可改为True
+                    "multiline": False,      
                     "default": ""
                 }),
                 "rules": ("STRING", {
-                    "multiline": True,       # 多行编辑框
-                    "default": "# 示例规则：\nif abc: abc ccc,\nif def: def ggg else: ddd default,"
+                    "multiline": True,       
+                    "default": "# 示例规则：\nif perlica_(Arknights): 1girl, long_hair\nif abc: abc ccc else: default_abc"
                 }),
             }
         }
@@ -442,8 +443,26 @@ class StringRuleProcessor:
     FUNCTION = "process"
     CATEGORY = "utils/text"
 
+    def append_with_comma(self, text, add_text):
+        """辅助函数：智能追加文本"""
+        if not add_text:
+            return text
+        text = text.strip()
+        add_text = add_text.strip()
+        if not text:
+            return add_text
+        if text.endswith(','):
+            return f"{text} {add_text}"
+        else:
+            return f"{text}, {add_text}"
+
     def process(self, input_string, rules):
         output = input_string
+        
+        # 核心改进1：为了准确判断“是否存在”，我们将output按逗号分割成标签集合
+        # 这样可以完美规避括号等特殊字符在正则搜索中的歧义，也能处理前后空格
+        current_tags = set(tag.strip().lower() for tag in output.split(',') if tag.strip())
+
         lines = rules.split('\n')
 
         for line in lines:
@@ -451,36 +470,48 @@ class StringRuleProcessor:
             if not line or line.startswith('#'):
                 continue
 
-            # 解析格式: if word: add_if_exists [else: add_if_not_exists]
-            # 正则说明：
-            #   ^\s*if\s+(.+?)\s*:\s*(.+?)(?:\s+else:\s*(.+))?\s*$
-            #   group1: word
-            #   group2: add_if_exists
-            #   group3: add_if_not_exists (可选)
+            # 核心改进2：更健壮的正则解析
+            # 解释：
+            # ^\s*if\s+          -> 匹配开始 if
+            # (.+?)              -> group1: 关键词 (非贪婪，匹配到第一个冒号前)
+            # \s*:\s*            -> 匹配冒号分隔符
+            # (.+?)              -> group2: 存在时添加的内容 (非贪婪，匹配到 else 或 行尾)
+            # (?:\s+else:\s*(.+))?$ -> 可选的 else 分支，group3: 不存在时添加的内容
             match = re.match(
                 r'^\s*if\s+(.+?)\s*:\s*(.+?)(?:\s+else:\s*(.+))?\s*$',
                 line,
-                re.DOTALL
+                re.IGNORECASE
             )
+            
             if not match:
-                # 格式错误，跳过该行（也可打印警告，此处静默忽略）
                 continue
 
+            # 提取并清理关键词
             word = match.group(1).strip()
+            # 检查时忽略大小写，并去除首尾空格进行比较
+            word_check = word.lower().strip()
+            
             add_if_exists = match.group(2).strip()
             add_if_not_exists = match.group(3).strip() if match.group(3) else None
 
-            # 使用正则边界 \b 确保单词独立
-            pattern = r'\b' + re.escape(word) + r'\b'
-            if re.search(pattern, output):
+            # 核心改进3：使用集合进行存在性检查，而不是正则搜索
+            # 这样即使 word 是 "perlica_(Arknights)" 这种带括号的，也能精准匹配，不会报错
+            is_present = word_check in current_tags
+
+            if is_present:
                 if add_if_exists:
-                    output = append_with_comma(output, add_if_exists)
+                    output = self.append_with_comma(output, add_if_exists)
+                    # 更新集合，以便后续规则可以使用本次添加的标签
+                    new_tags = [t.strip().lower() for t in add_if_exists.split(',') if t.strip()]
+                    current_tags.update(new_tags)
             else:
                 if add_if_not_exists:
-                    output = append_with_comma(output, add_if_not_exists)
+                    output = self.append_with_comma(output, add_if_not_exists)
+                    new_tags = [t.strip().lower() for t in add_if_not_exists.split(',') if t.strip()]
+                    current_tags.update(new_tags)
 
         return (output,)
-    
+
 
 class StringProcessor:
     """
