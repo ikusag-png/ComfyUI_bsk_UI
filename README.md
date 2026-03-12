@@ -41,7 +41,10 @@ bash
 cd /path/to/ComfyUI/custom_nodes
 git clone https://github.com/ikusag-png/ComfyUI_bsk_UI.git
 ```
-
+为确保生成过程预览生效,需要下载下面两个文件放到/ComfyUI/models/vae_approx
+[taew2_1.safetensors](https://www.modelscope.cn/models/Kijai/WanVideo_comfy/resolve/master/taew2_1.safetensors)
+[taew2_2.safetensors](https://www.modelscope.cn/models/Kijai/WanVideo_comfy/resolve/master/taew2_2.safetensors)
+并且ComfyUI 启动参数额外添加 --preview-method taesd
 启动 ComfyUI，在界面左上角找到新增的按钮，点击即可打开 bsk_UI 面板
 
 点击设置按钮，加载你用comfyui导出的 API 工作流的json文件，开始探索！
