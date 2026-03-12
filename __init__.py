@@ -1574,6 +1574,218 @@ class bsk_WanVideoImageToVideoEncode:
         return (image_embeds,)
 #endregion
 
+class ImageResizeAAA:
+    upscale_methods = ["nearest-exact", "bilinear", "area", "bicubic", "lanczos"]
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "width": ("INT", { "default": 512, "min": 0, "max": MAX_RESOLUTION, "step": 1, }),
+                "height": ("INT", { "default": 512, "min": 0, "max": MAX_RESOLUTION, "step": 1, }),
+                "upscale_method": (s.upscale_methods,),
+                "keep_proportion": (["stretch", "resize", "pad", "pad_edge", "crop"], { "default": False }),
+                "pad_color": ("STRING", { "default": "0, 0, 0", "tooltip": "Color to use for padding."}),
+                "crop_position": (["center", "top", "bottom", "left", "right"], { "default": "center" }),
+                "divisible_by": ("INT", { "default": 2, "min": 0, "max": 512, "step": 1, }),
+                "swap_dimensions": ("BOOLEAN", {"default": False, "label": "Swap Width/Height"}),
+                "auto_match_aspect": ("BOOLEAN", {"default": False, "label": "Auto Match Aspect Ratio"}),
+                "filename_prefix": ("STRING", {"default": "image", "tooltip": "Prefix for the output filename"}),
+            },
+            "optional" : {
+                "mask": ("MASK",),
+                "device": (["cpu", "gpu"],),
+            },
+             "hidden": {
+                "unique_id": "UNIQUE_ID",
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE", "INT", "INT", "MASK", "STRING")
+    RETURN_NAMES = ("IMAGE", "width", "height", "mask", "filename")
+    FUNCTION = "resize"
+    CATEGORY = "KJNodes/image"
+    DESCRIPTION = """
+Resizes the image to the specified width and height.  
+Size can be retrieved from the input.
+
+Keep proportions keeps the aspect ratio of the image, by  
+highest dimension.  
+"""
+
+    def resize(self, image, width, height, keep_proportion, upscale_method, divisible_by, pad_color, crop_position, swap_dimensions, auto_match_aspect, filename_prefix, unique_id, device="cpu", mask=None):
+        B, H, W, C = image.shape
+        
+        # 自动匹配宽高比
+        if auto_match_aspect:
+            input_aspect = W / H
+            target_aspect = width / height
+            
+            # 如果输入和目标的宽高比不一致（横竖方向不同）
+            if (input_aspect > 1 and target_aspect < 1) or (input_aspect < 1 and target_aspect > 1):
+                width, height = height, width
+                print(f"Auto-matched aspect ratio: swapped dimensions to {width}x{height}")
+        
+        # 手动交换宽度和高度
+        if swap_dimensions:
+            width, height = height, width
+            
+        if device == "gpu":
+            if upscale_method == "lanczos":
+                raise Exception("Lanczos is not supported on the GPU")
+            device = model_management.get_torch_device()
+        else:
+            device = torch.device("cpu")
+
+        if width == 0:
+            width = W
+        if height == 0:
+            height = H
+        
+        if keep_proportion == "resize" or keep_proportion.startswith("pad"):
+            # If one of the dimensions is zero, calculate it to maintain the aspect ratio
+            if width == 0 and height != 0:
+                ratio = height / H
+                new_width = round(W * ratio)
+            elif height == 0 and width != 0:
+                ratio = width / W
+                new_height = round(H * ratio)
+            elif width != 0 and height != 0:
+                # Scale based on which dimension is smaller in proportion to the desired dimensions
+                ratio = min(width / W, height / H)
+                new_width = round(W * ratio)
+                new_height = round(H * ratio)
+
+            if keep_proportion.startswith("pad"):
+                # Calculate padding based on position
+                if crop_position == "center":
+                    pad_left = (width - new_width) // 2
+                    pad_right = width - new_width - pad_left
+                    pad_top = (height - new_height) // 2
+                    pad_bottom = height - new_height - pad_top
+                elif crop_position == "top":
+                    pad_left = (width - new_width) // 2
+                    pad_right = width - new_width - pad_left
+                    pad_top = 0
+                    pad_bottom = height - new_height
+                elif crop_position == "bottom":
+                    pad_left = (width - new_width) // 2
+                    pad_right = width - new_width - pad_left
+                    pad_top = height - new_height
+                    pad_bottom = 0
+                elif crop_position == "left":
+                    pad_left = 0
+                    pad_right = width - new_width
+                    pad_top = (height - new_height) // 2
+                    pad_bottom = height - new_height - pad_top
+                elif crop_position == "right":
+                    pad_left = width - new_width
+                    pad_right = 0
+                    pad_top = (height - new_height) // 2
+                    pad_bottom = height - new_height - pad_top
+
+            width = new_width
+            height = new_height
+
+        if divisible_by > 1:
+            width = width - (width % divisible_by)
+            height = height - (height % divisible_by)
+
+        out_image = image.clone().to(device)
+
+        if mask is not None:
+            out_mask = mask.clone().to(device)
+        
+        if keep_proportion == "crop":
+            old_width = W
+            old_height = H
+            old_aspect = old_width / old_height
+            new_aspect = width / height
+            
+            # Calculate dimensions to keep
+            if old_aspect > new_aspect:  # Image is wider than target
+                crop_w = round(old_height * new_aspect)
+                crop_h = old_height
+            else:  # Image is taller than target
+                crop_w = old_width
+                crop_h = round(old_width / new_aspect)
+            
+            # Calculate crop position
+            if crop_position == "center":
+                x = (old_width - crop_w) // 2
+                y = (old_height - crop_h) // 2
+            elif crop_position == "top":
+                x = (old_width - crop_w) // 2
+                y = 0
+            elif crop_position == "bottom":
+                x = (old_width - crop_w) // 2
+                y = old_height - crop_h
+            elif crop_position == "left":
+                x = 0
+                y = (old_height - crop_h) // 2
+            elif crop_position == "right":
+                x = old_width - crop_w
+                y = (old_height - crop_h) // 2
+            
+            # Apply crop
+            out_image = out_image.narrow(-2, x, crop_w).narrow(-3, y, crop_h)
+            if mask is not None:
+                out_mask = out_mask.narrow(-1, x, crop_w).narrow(-2, y, crop_h)
+        
+        out_image = common_upscale(out_image.movedim(-1,1), width, height, upscale_method, crop="disabled").movedim(1,-1)
+
+        if mask is not None:
+            if upscale_method == "lanczos":
+                out_mask = common_upscale(out_mask.unsqueeze(1).repeat(1, 3, 1, 1), width, height, upscale_method, crop="disabled").movedim(1,-1)[:, :, :, 0]
+            else:
+                out_mask = common_upscale(out_mask.unsqueeze(1), width, height, upscale_method, crop="disabled").squeeze(1)
+            
+        if keep_proportion.startswith("pad"):
+            if pad_left > 0 or pad_right > 0 or pad_top > 0 or pad_bottom > 0:
+                padded_width = width + pad_left + pad_right
+                padded_height = height + pad_top + pad_bottom
+                if divisible_by > 1:
+                    width_remainder = padded_width % divisible_by
+                    height_remainder = padded_height % divisible_by
+                    if width_remainder > 0:
+                        extra_width = divisible_by - width_remainder
+                        pad_right += extra_width
+                    if height_remainder > 0:
+                        extra_height = divisible_by - height_remainder
+                        pad_bottom += extra_height
+                out_image, _ = ImagePadKJ.pad(self, out_image, pad_left, pad_right, pad_top, pad_bottom, 0, pad_color, "edge" if keep_proportion == "pad_edge" else "color")
+                if mask is not None:
+                    out_mask = out_mask.unsqueeze(1).repeat(1, 3, 1, 1).movedim(1,-1)
+                    out_mask, _ = ImagePadKJ.pad(self, out_mask, pad_left, pad_right, pad_top, pad_bottom, 0, pad_color, "edge" if keep_proportion == "pad_edge" else "color")
+                    out_mask = out_mask[:, :, :, 0]
+
+        # 生成文件名
+        # 确定图像方向
+        if width > height:
+            orientation = "H"  # 横图
+        elif height > width:
+            orientation = "V"  # 竖图
+        else:
+            orientation = "S"  # 正方形
+        
+        # 构建文件名
+        filename = f"{filename_prefix}_{orientation}"
+
+        if unique_id and PromptServer is not None:
+            try:
+                num_elements = out_image.numel()
+                element_size = out_image.element_size()
+                memory_size_mb = (num_elements * element_size) / (1024 * 1024)
+                
+                PromptServer.instance.send_progress_text(
+                    f"<tr><td>Output: </td><td><b>{out_image.shape[0]}</b> x <b>{out_image.shape[2]}</b> x <b>{out_image.shape[1]} | {memory_size_mb:.2f}MB</b></td></tr>",
+                    unique_id
+                )
+            except:
+                pass
+
+        return(out_image.cpu(), out_image.shape[2], out_image.shape[1], out_mask.cpu() if mask is not None else torch.zeros(64,64, device=torch.device("cpu"), dtype=torch.float32), filename)
+     
 
 NODE_CLASS_MAPPINGS = {
     "PromptStringProcessor": PromptStringProcessor,
@@ -1587,6 +1799,7 @@ NODE_CLASS_MAPPINGS = {
     # "bsk_WanVideoImageToVideoEncodeSelective": bsk_WanVideoImageToVideoEncodeSelective,
     "bsk_WanVideoFrameMask": bsk_WanVideoFrameMask,
     "RandomSeedNode": RandomSeedNode,
+    "缩放图片aa": ImageResizeAAA,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1601,6 +1814,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     # "bsk_WanVideoImageToVideoEncodeSelective": "bsk_WanVideoImageToVideoEncode帧选择",
     "bsk_WanVideoFrameMask": "bsk_WanVideoFrameMask",
     "RandomSeedNode": "Random Seed (Panel)",
+    "ImageResizeAAA": "缩放图片aa",
 }
 
 
