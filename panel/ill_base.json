@@ -53,6 +53,10 @@
         "negative": [
           "5",
           0
+        ],
+        "latent_image": [
+          "12",
+          0
         ]
       },
       "class_type": "KSampler (Efficient)",
@@ -115,6 +119,10 @@
     },
     "7": {
       "inputs": {
+        "samples": [
+          "3",
+          3
+        ],
         "vae": [
           "1",
           2
@@ -140,7 +148,7 @@
     },
     "9": {
       "inputs": {
-        "image": "pasted/image.png"
+        "image": "66d3f5610f9b1040d494d54c_thumb.webp"
       },
       "class_type": "LoadImage",
       "_meta": {
@@ -178,6 +186,38 @@
       "_meta": {
         "title": "负面"
       }
+    },
+    "12": {
+      "inputs": {
+        "pixels": [
+          "13",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ]
+      },
+      "class_type": "VAEEncode",
+      "_meta": {
+        "title": "VAE编码"
+      }
+    },
+    "13": {
+      "inputs": {
+        "upscale_method": "lanczos",
+        "width": 720,
+        "height": 1280,
+        "crop": "center",
+        "image": [
+          "9",
+          0
+        ]
+      },
+      "class_type": "ImageScale",
+      "_meta": {
+        "title": "缩放图像"
+      }
     }
   },
   "tabs": [
@@ -187,16 +227,17 @@
       "nodeIds": [
         "9",
         "10",
-        "11"
+        "11",
+        "13"
       ]
     },
     {
-      "id": "tab_1773347256450_59qljnmlg",
-      "name": "其他",
+      "id": "tab_1773349857366_d3dndsu7j",
+      "name": "其他设置",
       "nodeIds": [
         "1",
-        "3",
-        "2"
+        "2",
+        "3"
       ]
     }
   ],
@@ -205,12 +246,13 @@
     "main": [
       "9",
       "10",
-      "11"
+      "11",
+      "13"
     ],
-    "tab_1773347256450_59qljnmlg": [
+    "tab_1773349857366_d3dndsu7j": [
       "1",
-      "3",
-      "2"
+      "2",
+      "3"
     ]
   },
   "cardValues": {
@@ -230,13 +272,17 @@
     "5.speak_and_recognation": true,
     "6.seed_str": "0",
     "8.filename_prefix": "ComfyUI",
-    "9.image": "pasted/image.png",
+    "9.image": "panel_crop_node_9.png",
     "10.text": "# 正面\n1girls, Sitting on chair, classroom, desk, \n\nizumi_sagiri, 1girl, long_hair, looking_at_viewer, blush, smile, blue_eyes, shirt, bow, closed_mouth, bare_shoulders, standing, collarbone, grey_hair, short_sleeves, hair_bow, cowboy_shot, shorts, off_shoulder, short_shorts, pink_background, pink_bow, pink_shirt, low-tied_long_hair, contrapposto, pink_shorts",
     "10.separator": " ",
     "10.speak_and_recognation": true,
     "11.text": "# 负面\nsketch,greyscale,comic,monochrome,bad,noise,western,extra digits,logo,scan artifacts,lowres,bad anatomy,text,error,extra digit,fewer digits,cropped,bad quality,worst quality,low quality,normal quality,jpeg artifacts,signature,watermark,username,blurry,fused fingers,too many fingers,too many toes,extra legs,, shadow,shaded face,shade,backlighting,",
     "11.separator": " ",
-    "11.speak_and_recognation": true
+    "11.speak_and_recognation": true,
+    "13.upscale_method": "lanczos",
+    "13.width": 720,
+    "13.height": 1280,
+    "13.crop": "center"
   },
   "globalCropSize": {
     "width": 864,
@@ -279,7 +325,7 @@
     "39.rules": "",
     "40.rules": "287px",
     "35.text": "",
-    "10.text": "270px",
+    "10.text": "305px",
     "11.text": "271px"
   },
   "theme": {
