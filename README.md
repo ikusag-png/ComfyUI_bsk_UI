@@ -1,4 +1,12 @@
-**ComfyUI_bsk_UI**
+
+<h1 align="center">ComfyUI_bsk_UI</h1>
+<!-- 或者使用 style 属性 -->
+<h2 align="center">
+  <a href="https://space.bilibili.com/26779709" target="_blank">
+    <img src="https://www.bilibili.com/favicon.ico" width="20" height="20" alt="B站" style="vertical-align: middle;">
+    @灰暗x
+  </a>
+</h2>
 
 🌟 简介 | Introduction
 ComfyUI_bsk_UI 是一个为 ComfyUI 打造的现代化、用户友好的交互界面。它彻底改变了 ComfyUI 原生前端繁琐的操作方式，让你能够更高效、更舒适地进行 AI 绘画工作流编排。
