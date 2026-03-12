@@ -1,0 +1,2 @@
+# ComfyUI_bsk_UI
+这是一个非常易用友好的comfyui界面, 让你摆脱comfyui前端那种蹩脚繁琐的操作方式
