@@ -1,28 +1,38 @@
-ComfyUI_bsk_UI
+**ComfyUI_bsk_UI**
 
 🌟 简介 | Introduction
 ComfyUI_bsk_UI 是一个为 ComfyUI 打造的现代化、用户友好的交互界面。它彻底改变了 ComfyUI 原生前端繁琐的操作方式，让你能够更高效、更舒适地进行 AI 绘画工作流编排。
 
-你是否厌倦了 ComfyUI 原生界面那令人崩溃的交互体验？拖拽缩放画布点到手酸？节点连线绕到眼花？bsk_UI 就是为你准备的解决方案！
+你是否厌倦了 ComfyUI 原生界面那令人崩溃的交互体验？
 
-ComfyUI_bsk_UI is a modern and user-friendly interface for ComfyUI, designed to liberate you from the cumbersome and complicated operation style of the original frontend. Create your AI art workflows more efficiently and comfortably!
+拖拽缩放画布点到手酸？节点连线绕到眼花？
 
-✨ 核心特性 | Key Features
-🎯 极简操作 - 告别繁琐的节点操作，让工作流编排变得直观简单
+bsk_UI 就是为你准备的解决方案！
 
-🖱️ 流畅交互 - 无需拖拽缩放画布,你只需要按快捷键就能完成大部分操作，不再"点到手酸"
+ComfyUI_bsk_UI is a modern and user-friendly interface for ComfyUI, 
+designed to liberate you from the cumbersome and complicated operation style of the original frontend. 
+Create your AI art workflows more efficiently and comfortably!
 
-🎨 清晰界面 - 重新设计的视觉布局，重要信息一目了然,全屏的提示词编写功能,强大的工作流和提示词库保存功能,
 
-🔧 灵活配置 - 支持加载 API 工作流，自由定制你的创作环境
+✨ **核心特性** | Key Features
+
+🎯 **极简操作** - 告别繁琐的节点操作，让工作流编排变得直观简单
+
+🖱️ **流畅交互** - 无需拖拽缩放画布,你只需要按快捷键就能完成大部分操作，不再"点到手酸"
+
+🎨 **清晰界面** - 重新设计的视觉布局，重要信息一目了然,全屏的提示词编写功能,强大的工作流和提示词库保存功能,
+
+🔧 **灵活配置** - 支持加载 API 工作流，自由定制你的创作环境
+
 
 📦 安装方法 | Installation
 克隆本仓库到 ComfyUI 的 custom_nodes 目录：
 
 bash
+```text
 cd /path/to/ComfyUI/custom_nodes
 git clone https://github.com/ikusag-png/ComfyUI_bsk_UI.git
-
+```
 启动 ComfyUI，在界面左上角找到新增的按钮，点击即可打开 bsk_UI 面板
 
 点击设置按钮，加载你用comfyui导出的 API 工作流的json文件，开始探索！
@@ -53,6 +63,7 @@ Copyright © 2026 [@灰暗x](https://space.bilibili.com/26779709)
 这是一个 严格的开源协议，选择它是因为我希望这个项目能够始终保持自由和开放，不被任何人或组织用于封闭的商业用途。
 
 这意味着你可以 | This means you are free to:
+
 ✅ 使用 - 在任何场景下使用本软件 | Use the software for any purpose
 
 ✅ 修改 - 修改代码以满足你的需求 | Modify the code to fit your needs
@@ -62,6 +73,7 @@ Copyright © 2026 [@灰暗x](https://space.bilibili.com/26779709)
 ✅ 网络服务 - 通过网络提供本软件的服务 | Run a public instance/network service
 
 但你必须遵守 | But you must:
+
 🔓 开源 - 如果你分发本软件或提供网络服务，必须公开全部源代码 | Disclose your source code when you distribute the software or run a public instance
 
 📝 保留版权 - 必须保留原始版权声明 | Retain the original copyright notice
