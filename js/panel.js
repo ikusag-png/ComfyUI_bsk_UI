@@ -43,6 +43,10 @@
     if (key === 'image') return 'image';
     if (key.includes('image') && !key.includes('output') && !key.includes('filename')) return 'image';
     
+    // StringProcessor 和 PromptStringProcessor 的特定字段使用多行文本编辑框
+    if (classType === 'StringProcessor' && (key === 'strings_to_remove' || key === 'input_string')) return 'textarea';
+    if (classType === 'PromptStringProcessor' && (key === 'prompt' || key === 'rules')) return 'textarea';
+    
     // 检测 __value__ 格式的布尔值（错误的保存格式）
     if (typeof value === 'object' && value !== null && value.__value__) {
       const val = value.__value__;
@@ -226,7 +230,7 @@
       this.loadConfig();
 
       if (this.tabs.length === 0) {
-        this.addTab('主配置', 'main');
+        this.addTab('常用', 'main');
       }
 
       console.log('[ComfyUI Panel] Panel initialized');
@@ -1653,7 +1657,9 @@
         e.stopPropagation();
         
         const result = this.toggleCommentAtPosition(this.elements.promptPreviewTextarea, e);
-        if (result) {
+        if (result.modified) {
+          // 设置光标位置
+          this.elements.promptPreviewTextarea.setSelectionRange(result.cursorOffset, result.cursorOffset);
           // 更新高亮显示
           if (this.elements.promptHighlightPre) {
             this.renderTextareaHighlight(this.elements.promptHighlightPre, this.elements.promptPreviewTextarea.value);
@@ -2121,8 +2127,8 @@
         // 恢复按钮图标
         this.elements.promptLibraryBtn.classList.remove('active-panel');
         this.restoreButtonIcon('promptLibraryBtn');
-        // 清除当前选中的卡片
-        this.currentHoveredCardKey = null;
+        // 注意：不清除 currentHoveredCardKey 和 currentPreviewPrompt/currentPreviewIndex
+        // 这样再次显示时可以恢复上次的选中状态
         // 重置最大化状态
         this.promptLibraryMaximized = true;
         this.updateMaximizeButton();
@@ -2157,6 +2163,9 @@
         this.promptLibraryMaximized = true;
         this.updateMaximizeButton();
         
+        // 恢复上次的选中状态
+        this.restorePromptLibrarySelection();
+        
         // 让按钮组保持展开状态，方便点击返回
         const btnGroup = document.getElementById('left-btn-group');
         if (btnGroup) {
@@ -2184,6 +2193,58 @@
       await this.savePromptLibraryConfig();
       this.renderPromptLibraryList();
       this.showToast('已自动保存');
+    }
+
+    // 恢复提示词库的选中状态
+    restorePromptLibrarySelection() {
+      // 如果上次选中的是卡片列表中的项目
+      if (this.currentHoveredCardKey) {
+        // 高亮卡片列表中的对应项
+        const cardItems = this.elements.promptCardList.querySelectorAll('.prompt-card-item');
+        cardItems.forEach(item => {
+          if (item.dataset.cardKey === this.currentHoveredCardKey) {
+            item.classList.add('active');
+          } else {
+            item.classList.remove('active');
+          }
+        });
+        // 清除提示词列表的选中状态
+        this.elements.promptLibraryList.querySelectorAll('.prompt-item').forEach(el => el.classList.remove('active'));
+        
+        // 更新标题显示
+        const textareaCards = this.getTextareaCards();
+        const targetCard = textareaCards.find(c => c.fullKey === this.currentHoveredCardKey);
+        if (targetCard) {
+          const cardId = this.currentHoveredCardKey.split('.')[0];
+          this.elements.promptPreviewTitle.innerHTML = `
+            <span class="card-id">#${cardId}</span>
+            <span class="card-name">${targetCard.title}</span>
+            <span class="loaded-badge">✓ 卡片</span>
+          `;
+        }
+      }
+      // 如果上次选中的是提示词列表中的项目
+      else if (this.currentPreviewPrompt && this.currentPreviewIndex >= 0) {
+        // 高亮提示词列表中的对应项
+        const promptItems = this.elements.promptLibraryList.querySelectorAll('.prompt-item');
+        promptItems.forEach((item, index) => {
+          if (index === this.currentPreviewIndex) {
+            item.classList.add('active');
+          } else {
+            item.classList.remove('active');
+          }
+        });
+        // 清除卡片列表的选中状态
+        this.elements.promptCardList.querySelectorAll('.prompt-card-item').forEach(el => el.classList.remove('active'));
+        
+        // 更新标题显示
+        const cardId = this.currentPreviewPrompt.id.split('.')[0];
+        this.elements.promptPreviewTitle.innerHTML = `
+          <span class="card-id">#${cardId}</span>
+          <span class="card-name">${this.currentPreviewPrompt.title}</span>
+          <span class="loaded-badge">✓ 提示词</span>
+        `;
+      }
     }
 
     // 提示词库最大化状态
@@ -2666,6 +2727,7 @@
       // Ctrl+/ 注释/取消注释
       if (e.key === '/' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
+        e.stopPropagation();
         const textarea = this.elements.promptPreviewTextarea;
         const start = textarea.selectionStart;
         const end = textarea.selectionEnd;
@@ -3656,6 +3718,8 @@
         if (e.target.closest('.config-card-header')) return;
         // 如果点击的是图像上传/裁剪区域，不触发拖拽
         if (e.target.closest('.image-upload-container, .image-preview-wrapper, .crop-overlay, .crop-box')) return;
+        // 如果点击的是多行文本编辑框容器（包括空白区域），不触发拖拽
+        if (e.target.closest('.textarea-highlight-container')) return;
         
         this.isDragScrolling = true;
         this.dragScrollStartY = e.clientY;
@@ -4257,7 +4321,7 @@
     resetTabsFromWorkflow() {
       this.tabs = [];
       this.tabNodes = {};
-      this.addTab('主配置', 'main');
+      this.addTab('常用', 'main');
       const mainTab = this.tabs[0];
       // 设置 nodeIds，并确保所有引用指向同一个数组
       const imageNodeIds = this.parsedNodes.filter(n => n.isImageNode && n.inputs.length > 0).map(n => n.id);
@@ -4368,10 +4432,11 @@
       const card = document.createElement('div');
       card.className = 'config-card';
       card.dataset.nodeId = node.id;
-      card.draggable = true;
+      // 注意：不在整个卡片上设置 draggable，而是在标题栏上设置
 
       const header = document.createElement('div');
       header.className = 'config-card-header';
+      header.draggable = true; // 只在标题栏上启用拖拽
       header.innerHTML = `
         <span class="config-card-toggle">▼</span>
         <span class="config-card-title">${node.title}</span>
@@ -4472,28 +4537,33 @@
     bindCardDragEvents(card) {
       let dragTargetId = null;
       let dropPosition = null;
+      const header = card.querySelector('.config-card-header');
 
-      card.addEventListener('dragstart', (e) => {
-        dragTargetId = card.dataset.nodeId;
-        card.classList.add('dragging');
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', dragTargetId);
-        const img = new Image();
-        img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-        e.dataTransfer.setDragImage(img, 0, 0);
-        setTimeout(() => card.style.opacity = '0.5', 0);
-      });
-
-      card.addEventListener('dragend', (e) => {
-        card.classList.remove('dragging');
-        card.style.opacity = '';
-        document.querySelectorAll('.config-card.drop-before, .config-card.drop-after').forEach(el => {
-          el.classList.remove('drop-before', 'drop-after');
+      // 拖拽开始和结束事件绑定到标题栏（header 是 draggable 元素）
+      if (header) {
+        header.addEventListener('dragstart', (e) => {
+          dragTargetId = card.dataset.nodeId;
+          card.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', dragTargetId);
+          const img = new Image();
+          img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+          e.dataTransfer.setDragImage(img, 0, 0);
+          setTimeout(() => card.style.opacity = '0.5', 0);
         });
-        dragTargetId = null;
-        dropPosition = null;
-      });
 
+        header.addEventListener('dragend', (e) => {
+          card.classList.remove('dragging');
+          card.style.opacity = '';
+          document.querySelectorAll('.config-card.drop-before, .config-card.drop-after').forEach(el => {
+            el.classList.remove('drop-before', 'drop-after');
+          });
+          dragTargetId = null;
+          dropPosition = null;
+        });
+      }
+
+      // 拖放目标事件绑定到卡片
       card.addEventListener('dragover', (e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
@@ -4643,7 +4713,9 @@
             e.stopPropagation();
             
             const result = this.toggleCommentAtPosition(textarea, e);
-            if (result) {
+            if (result.modified) {
+              // 设置光标位置
+              textarea.setSelectionRange(result.cursorOffset, result.cursorOffset);
               this.cardValues[key] = textarea.value;
               this.renderTextareaHighlight(highlightPre, textarea.value);
             }
@@ -4653,6 +4725,7 @@
           textarea.addEventListener('keydown', (e) => {
             if (e.key === '/' && (e.ctrlKey || e.metaKey)) {
               e.preventDefault();
+              e.stopPropagation();
               
               const start = textarea.selectionStart;
               const end = textarea.selectionEnd;
@@ -4735,6 +4808,12 @@
             }
           });
           resizeObserver.observe(textarea);
+
+          // 阻止拖拽事件冒泡，防止在文本框空白区域拖拽时触发卡片拖拽
+          textareaContainer.addEventListener('dragstart', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          });
 
           textareaContainer.appendChild(highlightPre);
           textareaContainer.appendChild(textarea);
@@ -4972,15 +5051,15 @@
      * Ctrl+双击触发注释/取消注释功能
      * @param {HTMLTextAreaElement} textarea - 文本框元素
      * @param {MouseEvent} e - 鼠标事件
-     * @returns {boolean} - 是否成功修改了内容
+     * @returns {{modified: boolean, cursorOffset: number, lineStartPos: number}} - 是否修改了内容、光标偏移量、行起始位置
      */
     toggleCommentAtPosition(textarea, e) {
       const value = textarea.value;
-      if (!value) return false;
+      if (!value) return { modified: false, cursorOffset: 0, lineStartPos: 0 };
 
       // 获取双击位置对应的字符索引
       const clickIndex = this.getClickCharIndex(textarea, e);
-      if (clickIndex === -1) return false;
+      if (clickIndex === -1) return { modified: false, cursorOffset: 0, lineStartPos: 0 };
 
       // 找到双击位置所在的行
       const lines = value.split('\n');
@@ -5012,18 +5091,21 @@
         const result = this.toggleLineComment(currentLine);
         lines[lineIndex] = result.line;
         textarea.value = lines.join('\n');
-        return true;
+        // 光标移动到整行末尾
+        const newLineEnd = lineStartPos + lines[lineIndex].length;
+        return { modified: true, cursorOffset: newLineEnd, lineStartPos };
       } else {
         // 双击位置不在行首，找到并注释双击位置的提示词
         const result = this.togglePromptComment(currentLine, clickPosInLine);
         if (result.modified) {
           lines[lineIndex] = result.line;
           textarea.value = lines.join('\n');
-          return true;
+          // 光标位置是相对于行起始位置的偏移
+          return { modified: true, cursorOffset: lineStartPos + result.cursorOffset, lineStartPos };
         }
       }
 
-      return false;
+      return { modified: false, cursorOffset: clickIndex, lineStartPos: 0 };
     }
 
     /**
@@ -5271,13 +5353,20 @@
       const data = cropInfo.getData();
       if (!data || !data.img) return;
 
-      // 执行 Canvas 裁剪
+      // 执行 Canvas 裁剪并缩放到目标分辨率
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       const scaleX = data.img.naturalWidth / data.width;
       const scaleY = data.img.naturalHeight / data.height;
-      canvas.width = Math.round(data.cropW * scaleX);
-      canvas.height = Math.round(data.cropH * scaleY);
+      
+      // 使用用户设置的裁剪分辨率作为输出尺寸
+      const targetWidth = this.globalCropSize.width;
+      const targetHeight = this.globalCropSize.height;
+      
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      
+      // 先裁剪原图，然后缩放到目标分辨率
       ctx.drawImage(
         data.img,
         data.cropX * scaleX,
@@ -5286,8 +5375,8 @@
         data.cropH * scaleY,
         0,
         0,
-        canvas.width,
-        canvas.height
+        targetWidth,
+        targetHeight
       );
 
       const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
@@ -6648,6 +6737,7 @@
       this.autoLoadLastConfig();
     }
   }
+
 
   function init() { console.log('[ComfyUI Panel] Initializing...'); window.comfyUIPanel = new ComfyUIPanel(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
