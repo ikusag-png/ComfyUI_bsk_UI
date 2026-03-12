@@ -1,0 +1,295 @@
+{
+  "workflow": {
+    "1": {
+      "inputs": {
+        "ckpt_name": "waiIllustriousSDXL_v160.safetensors"
+      },
+      "class_type": "CheckpointLoaderSimple",
+      "_meta": {
+        "title": "Checkpoint加载器（简易）"
+      }
+    },
+    "2": {
+      "inputs": {
+        "lora_name": "ma1ma1helmes_b-000014_Illustrious_trigger_is_ma1ma1helmes_b_illu.safetensors",
+        "strength_model": 0.6,
+        "strength_clip": 0.6,
+        "lora_path": "",
+        "model": [
+          "1",
+          0
+        ],
+        "clip": [
+          "1",
+          1
+        ]
+      },
+      "class_type": "LoraLoaderWithPath",
+      "_meta": {
+        "title": "bsk_LoraLoaderWithPath"
+      }
+    },
+    "3": {
+      "inputs": {
+        "seed": [
+          "6",
+          0
+        ],
+        "steps": 20,
+        "cfg": 5,
+        "sampler_name": "euler_ancestral",
+        "scheduler": "karras",
+        "denoise": 1,
+        "preview_method": "auto",
+        "vae_decode": "true",
+        "model": [
+          "2",
+          0
+        ],
+        "positive": [
+          "4",
+          0
+        ],
+        "negative": [
+          "5",
+          0
+        ]
+      },
+      "class_type": "KSampler (Efficient)",
+      "_meta": {
+        "title": "K采样器(效率)0"
+      }
+    },
+    "4": {
+      "inputs": {
+        "text": [
+          "10",
+          0
+        ],
+        "speak_and_recognation": {
+          "__value__": [
+            false,
+            true
+          ]
+        },
+        "clip": [
+          "2",
+          1
+        ]
+      },
+      "class_type": "CLIPTextEncode",
+      "_meta": {
+        "title": "CLIP文本编码"
+      }
+    },
+    "5": {
+      "inputs": {
+        "text": [
+          "11",
+          0
+        ],
+        "speak_and_recognation": {
+          "__value__": [
+            false,
+            true
+          ]
+        },
+        "clip": [
+          "2",
+          1
+        ]
+      },
+      "class_type": "CLIPTextEncode",
+      "_meta": {
+        "title": "CLIP文本编码"
+      }
+    },
+    "6": {
+      "inputs": {
+        "seed_str": "0"
+      },
+      "class_type": "RandomSeedNode",
+      "_meta": {
+        "title": "Random Seed (Panel)"
+      }
+    },
+    "7": {
+      "inputs": {
+        "vae": [
+          "1",
+          2
+        ]
+      },
+      "class_type": "VAEDecode",
+      "_meta": {
+        "title": "VAE解码"
+      }
+    },
+    "8": {
+      "inputs": {
+        "filename_prefix": "ComfyUI",
+        "images": [
+          "7",
+          0
+        ]
+      },
+      "class_type": "SaveImage",
+      "_meta": {
+        "title": "保存图像"
+      }
+    },
+    "9": {
+      "inputs": {
+        "image": "pasted/image.png"
+      },
+      "class_type": "LoadImage",
+      "_meta": {
+        "title": "颜色"
+      }
+    },
+    "10": {
+      "inputs": {
+        "text": "# 正面\n1girls, Sitting on chair, classroom, desk, \n\nizumi_sagiri, 1girl, long_hair, looking_at_viewer, blush, smile, blue_eyes, shirt, bow, closed_mouth, bare_shoulders, standing, collarbone, grey_hair, short_sleeves, hair_bow, cowboy_shot, shorts, off_shoulder, short_shorts, pink_background, pink_bow, pink_shirt, low-tied_long_hair, contrapposto, pink_shorts",
+        "separator": " ",
+        "speak_and_recognation": {
+          "__value__": [
+            false,
+            true
+          ]
+        }
+      },
+      "class_type": "MultiLineStringEditor",
+      "_meta": {
+        "title": "正面"
+      }
+    },
+    "11": {
+      "inputs": {
+        "text": "# 负面\nsketch,greyscale,comic,monochrome,bad,noise,western,extra digits,logo,scan artifacts,lowres,bad anatomy,text,error,extra digit,fewer digits,cropped,bad quality,worst quality,low quality,normal quality,jpeg artifacts,signature,watermark,username,blurry,fused fingers,too many fingers,too many toes,extra legs,, shadow,shaded face,shade,backlighting,",
+        "separator": " ",
+        "speak_and_recognation": {
+          "__value__": [
+            false,
+            true
+          ]
+        }
+      },
+      "class_type": "MultiLineStringEditor",
+      "_meta": {
+        "title": "负面"
+      }
+    }
+  },
+  "tabs": [
+    {
+      "id": "main",
+      "name": "常用",
+      "nodeIds": [
+        "9",
+        "10",
+        "11"
+      ]
+    },
+    {
+      "id": "tab_1773347256450_59qljnmlg",
+      "name": "其他",
+      "nodeIds": [
+        "1",
+        "3",
+        "2"
+      ]
+    }
+  ],
+  "currentTab": "main",
+  "tabNodes": {
+    "main": [
+      "9",
+      "10",
+      "11"
+    ],
+    "tab_1773347256450_59qljnmlg": [
+      "1",
+      "3",
+      "2"
+    ]
+  },
+  "cardValues": {
+    "1.ckpt_name": "waiIllustriousSDXL_v160.safetensors",
+    "2.lora_name": "ma1ma1helmes_b-000014_Illustrious_trigger_is_ma1ma1helmes_b_illu.safetensors",
+    "2.strength_model": 0.6,
+    "2.strength_clip": 0.6,
+    "2.lora_path": "",
+    "3.steps": 20,
+    "3.cfg": 5,
+    "3.sampler_name": "euler_ancestral",
+    "3.scheduler": "karras",
+    "3.denoise": 1,
+    "3.preview_method": "auto",
+    "3.vae_decode": "true",
+    "4.speak_and_recognation": true,
+    "5.speak_and_recognation": true,
+    "6.seed_str": "0",
+    "8.filename_prefix": "ComfyUI",
+    "9.image": "pasted/image.png",
+    "10.text": "# 正面\n1girls, Sitting on chair, classroom, desk, \n\nizumi_sagiri, 1girl, long_hair, looking_at_viewer, blush, smile, blue_eyes, shirt, bow, closed_mouth, bare_shoulders, standing, collarbone, grey_hair, short_sleeves, hair_bow, cowboy_shot, shorts, off_shoulder, short_shorts, pink_background, pink_bow, pink_shirt, low-tied_long_hair, contrapposto, pink_shorts",
+    "10.separator": " ",
+    "10.speak_and_recognation": true,
+    "11.text": "# 负面\nsketch,greyscale,comic,monochrome,bad,noise,western,extra digits,logo,scan artifacts,lowres,bad anatomy,text,error,extra digit,fewer digits,cropped,bad quality,worst quality,low quality,normal quality,jpeg artifacts,signature,watermark,username,blurry,fused fingers,too many fingers,too many toes,extra legs,, shadow,shaded face,shade,backlighting,",
+    "11.separator": " ",
+    "11.speak_and_recognation": true
+  },
+  "globalCropSize": {
+    "width": 864,
+    "height": 1536
+  },
+  "linkCropSize": true,
+  "seedNode": "6",
+  "seedValue": "-1",
+  "seedEnabled": true,
+  "textareaHeights": {
+    "57.text": "",
+    "59.text": "",
+    "69.rules": "",
+    "79.rules": "",
+    "67.strings_to_remove": "",
+    "70.rules": "",
+    "73.text": "398px",
+    "75.rules": "",
+    "76.text": "",
+    "78.text_b": "",
+    "78.text_c": "",
+    "86.text": "",
+    "87.text": "",
+    "88.rules": "",
+    "15.text": "452px",
+    "20.text": "",
+    "21.rules": "",
+    "17.rules": "356px",
+    "16.text": "",
+    "29.text": "",
+    "31.text": "",
+    "44.text": "",
+    "24.strings_to_remove": "",
+    "30.rules": "",
+    "17.text": "",
+    "18.text": "",
+    "36.text": "",
+    "37.text": "",
+    "38.strings_to_remove": "",
+    "39.rules": "",
+    "40.rules": "287px",
+    "35.text": "",
+    "10.text": "270px",
+    "11.text": "271px"
+  },
+  "theme": {
+    "primaryGradient": "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    "backgroundColor": "linear-gradient(141deg, #e3e3e3 0%, #939393 50%, #dbe8f7 100%)",
+    "cardBackground": "rgba(255, 255, 255, 0.04)",
+    "borderStyle": "rgba(255, 255, 255, 0.08)",
+    "accentColor": "#667eea",
+    "textColor": "white",
+    "placeholderColor": "rgba(255, 255, 255, 0.6)"
+  },
+  "localOutputConfigs": {}
+}
