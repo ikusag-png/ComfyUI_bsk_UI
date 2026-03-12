@@ -54,6 +54,67 @@ print(f"[ComfyUI bsk UI] Extension loading (v{VERSION})...")
 
 # 文本编辑器节点
 
+class bsk_StringMergeWithSwitch:
+    """
+    一个支持三个字符串输入和开关控制的合并节点。
+    """
+    
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {},
+            "optional": {
+                # 输入字符串，默认为空，forceInput设为False允许不连接
+                "input1": ("STRING", {"default": "", "forceInput": False}),
+                # 开关选项，默认为True（开启）
+                "switch1": ("BOOLEAN", {"default": True}),
+                
+                "input2": ("STRING", {"default": "", "forceInput": False}),
+                "switch2": ("BOOLEAN", {"default": True}),
+                
+                "input3": ("STRING", {"default": "", "forceInput": False}),
+                "switch3": ("BOOLEAN", {"default": True}),
+            },
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("merged_string",)
+    FUNCTION = "merge_strings"
+    CATEGORY = "utils/text" # 节点在菜单中的分类
+
+    def merge_strings(self, input1="", switch1=True, input2="", switch2=True, input3="", switch3=True):
+        parts = []
+        
+        # 将输入和开关打包处理
+        inputs = [
+            (input1, switch1),
+            (input2, switch2),
+            (input3, switch3)
+        ]
+        
+        for text, is_on in inputs:
+            # 检查开关是否开启，且文本是否有效（非空且非None）
+            # 注意：未连接的输入在ComfyUI中通常会传入默认值（这里是空字符串）
+            if is_on and text:
+                # 去除首尾空白
+                clean_text = text.strip()
+                if clean_text:
+                    # 检查末尾是否有逗号或空格，如果有则去除，为了统一格式
+                    # 这样无论用户输入 "aa" 还是 "aa," 还是 "aa, "，都能整齐合并
+                    clean_text = clean_text.rstrip(", ")
+                    
+                    # 添加到列表
+                    parts.append(clean_text)
+        
+        # 将所有部分用 ", " 连接
+        # 比如 "aa" 和 "bb" -> "aa, bb"
+        result = ", ".join(parts)
+        
+        return (result,)
+
 class MultiLineStringEditor:
     """
     ComfyUI节点：多行字符串编辑器
@@ -1788,6 +1849,7 @@ highest dimension.
      
 
 NODE_CLASS_MAPPINGS = {
+    "bsk_StringMergeWithSwitch": bsk_StringMergeWithSwitch,
     "PromptStringProcessor": PromptStringProcessor,
     "LoraLoaderWithPath": LoraLoaderWithPath,
     "StringRuleProcessor": StringRuleProcessor,
@@ -1803,6 +1865,7 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "bsk_StringMergeWithSwitch": "bsk_String Merge (Switch)",
     "PromptStringProcessor": "bsk_字符替换和清除",
     "LoraLoaderWithPath": "bsk_LoraLoaderWithPath",
     "StringRuleProcessor": "bsk_StringRule",
