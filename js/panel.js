@@ -210,6 +210,10 @@
       // 当前活动面板（用于按钮返回逻辑）
       this.activePanelBtn = null;  // 'addCardBtn', 'settingsMainBtn', 'galleryBtn' 或 null
       
+      // 右侧面板隐藏状态（Tab键切换）
+      this.rightPanelHidden = false;
+      this.savedPreviewWidth = '66.67%';  // 保存隐藏前的预览宽度
+      
       // 搜索过滤相关
       this.currentSearchQuery = '';
 
@@ -1122,7 +1126,7 @@
         }
 
         .toolbar-select {
-          padding: 6px 10px; background: rgba(255, 255, 255, 0.1);
+          padding: 6px 10px; background: #b5b5b5b5;
           border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 4px;
           color: black; font-size: 13px; cursor: pointer;
         }
@@ -1142,10 +1146,184 @@
           right: 0;
           bottom: 0;
           flex-direction: row;
-          background: rgba(240, 240, 245, 0.98);
           z-index: 100;
         }
         .prompt-library-panel.visible { display: flex; }
+        
+        /* 深色模式（默认） */
+        .prompt-library-panel.dark-mode {
+          background: rgba(30, 30, 35, 0.98);
+        }
+        .prompt-library-panel.dark-mode .prompt-library-left {
+          background: rgba(35, 35, 40, 0.95);
+        }
+        .prompt-library-panel.dark-mode .prompt-preview-header {
+          background: #959595cc;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+          border-right: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .prompt-library-panel.dark-mode .prompt-preview-title {
+          color: #e0e0e0;
+        }
+        .prompt-library-panel.dark-mode .prompt-preview-textarea {
+          background: rgba(38, 38, 38, 0.9);
+          color: #e0e0e0;
+          caret-color: #667eea;
+        }
+        .prompt-library-panel.dark-mode .prompt-highlight-pre {
+          background: rgb(87 87 87);
+          color: #e0e0e0;
+        }
+        .prompt-library-panel.dark-mode .prompt-library-right {
+          background: rgba(35, 35, 40, 0.95);
+          border-left: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .prompt-library-panel.dark-mode .prompt-section-title {
+          color: #a0a0a0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .prompt-library-panel.dark-mode .prompt-item {
+          color: #c0c0c0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .prompt-library-panel.dark-mode .prompt-item:hover {
+          background: rgba(102, 126, 234, 0.25);
+          color: #ffffff;
+        }
+        .prompt-library-panel.dark-mode .prompt-item.active {
+          background: rgb(216 222 251);
+          color: #ffffff;
+        }
+        .prompt-library-panel.dark-mode .prompt-card-item {
+          color: #c0c0c0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .prompt-library-panel.dark-mode .prompt-card-item:hover {
+          background: rgba(102, 126, 234, 0.25);
+          color: #ffffff;
+        }
+        .prompt-library-panel.dark-mode .prompt-card-item.active {
+          background: rgb(216 222 251);
+          color: #ffffff;
+        }
+        .prompt-library-panel.dark-mode .prompt-card-item .card-node-id {
+          color: #667eea;
+        }
+        .prompt-library-panel.dark-mode .prompt-card-item .no-card-hint {
+          color: #ef4444;
+        }
+        .prompt-library-panel.dark-mode .hl-comment {
+          color: #6a9955 !important;
+        }
+        /* 深色模式下的控件样式 */
+        .prompt-library-panel.dark-mode .highlight-color-picker {
+          border-color: rgba(255, 255, 255, 0.4);
+        }
+        .prompt-library-panel.dark-mode .font-size-slider {
+          background: rgba(255, 255, 255, 0.15);
+        }
+        .prompt-library-panel.dark-mode .font-size-value {
+          color: #c0c0c0;
+        }
+        .prompt-library-panel.dark-mode .toolbar-select {
+          background: rgba(60, 60, 70, 0.9);
+          color: #e0e0e0;
+          border-color: rgba(255, 255, 255, 0.2);
+        }
+        .prompt-library-panel.dark-mode .panel-btn-secondary {
+          background: rgba(80, 80, 90, 0.8);
+          color: #e0e0e0;
+          border-color: rgba(255, 255, 255, 0.2);
+        }
+        .prompt-library-panel.dark-mode .panel-btn-secondary:hover {
+          background: rgba(100, 100, 110, 0.9);
+        }
+        .prompt-library-panel.dark-mode .panel-btn-primary {
+          background: rgba(102, 126, 234, 0.6);
+          color: #ffffff;
+          border-color: rgba(102, 126, 234, 0.8);
+        }
+        .prompt-library-panel.dark-mode .panel-btn-primary:hover {
+          background: rgba(102, 126, 234, 0.8);
+        }
+        .prompt-library-panel.dark-mode .prompt-card-list-header {
+          background: rgba(60, 60, 70, 0.8);
+          color: #c0c0c0;
+        }
+        .prompt-library-panel.dark-mode .prompt-card-list-header .refresh-card-btn {
+          background: rgba(102, 126, 234, 0.4);
+          color: #a0b0ff;
+          border-color: rgba(102, 126, 234, 0.6);
+        }
+        .prompt-library-panel.dark-mode .prompt-library-list-header {
+          background: rgba(60, 60, 70, 0.8);
+          color: #c0c0c0;
+        }
+        .prompt-library-panel.dark-mode .prompt-preview-content {
+          background: rgba(35, 35, 40, 0.5);
+        }
+        
+        /* 浅色模式 */
+        .prompt-library-panel.light-mode {
+          background: rgba(240, 240, 245, 0.98);
+        }
+        .prompt-library-panel.light-mode .prompt-library-left {
+          background: rgba(250, 250, 252, 0.95);
+        }
+        .prompt-library-panel.light-mode .prompt-preview-header {
+          background: rgb(203 203 203 / 22%);
+          border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+          border-right: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        .prompt-library-panel.light-mode .prompt-preview-title {
+          color: #333;
+        }
+        .prompt-library-panel.light-mode .prompt-preview-textarea {
+          background: rgba(255, 255, 255, 0.9);
+          color: #333;
+          caret-color: #667eea;
+        }
+        .prompt-library-panel.light-mode .prompt-highlight-pre {
+          background: rgba(255, 255, 255, 0.9);
+          color: #333;
+        }
+        .prompt-library-panel.light-mode .prompt-library-right {
+          background: rgba(250, 250, 252, 0.95);
+          border-left: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        .prompt-library-panel.light-mode .prompt-section-title {
+          color: #666;
+          border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        .prompt-library-panel.light-mode .prompt-item {
+          color: #333;
+          border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+        .prompt-library-panel.light-mode .prompt-item:hover {
+          background: rgba(0, 0, 0, 0.05);
+        }
+        .prompt-library-panel.light-mode .prompt-item.active {
+          background: rgba(102, 126, 234, 0.2);
+        }
+        .prompt-library-panel.light-mode .prompt-card-item {
+          color: #333;
+          border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+        .prompt-library-panel.light-mode .prompt-card-item:hover {
+          background: rgba(0, 0, 0, 0.05);
+        }
+        .prompt-library-panel.light-mode .prompt-card-item.active {
+          background: rgba(102, 126, 234, 0.2);
+        }
+        .prompt-library-panel.light-mode .prompt-card-item .card-node-id {
+          color: #667eea;
+        }
+        .prompt-library-panel.light-mode .prompt-card-item .no-card-hint {
+          color: #ef4444;
+        }
+        .prompt-library-panel.light-mode .hl-comment {
+          color: #22863a !important;
+        }
         
         /* 提示词库面板停靠模式 - 在 preview-content 里面 */
         .prompt-library-panel.docked {
@@ -1163,20 +1341,15 @@
           display: flex;
           flex-direction: column;
           min-width: 0;
-          background: rgba(250, 250, 252, 0.95);
         }
         .prompt-preview-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
           padding: 3px 6px;
-          background: rgb(203 203 203 / 22%);
-          border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-          border-right: 1px solid rgba(0, 0, 0, 0.1);
           flex-shrink: 0;
         }
         .prompt-preview-title {
-          color: #333;
           font-size: 23px;
           font-weight: 500;
           display: flex;
@@ -1220,6 +1393,22 @@
         }
         .panel-btn-danger-back:hover {
           background: rgba(239, 68, 68, 1) !important;
+        }
+        .highlight-color-picker {
+          width: 24px;
+          height: 24px;
+          padding: 0;
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          border-radius: 4px;
+          cursor: pointer;
+          background: transparent;
+        }
+        .highlight-color-picker::-webkit-color-swatch-wrapper {
+          padding: 2px;
+        }
+        .highlight-color-picker::-webkit-color-swatch {
+          border-radius: 2px;
+          border: none;
         }
         .font-size-slider {
           width: 70px;
@@ -1785,6 +1974,10 @@
                       <span class="card-name"></span>
                     </div>
                     <div class="prompt-preview-actions">
+                      <input type="color" class="highlight-color-picker" id="highlight-color-a" value="#6496c8" title="高亮颜色A">
+                      <input type="color" class="highlight-color-picker" id="highlight-color-b" value="#c89664" title="高亮颜色B">
+                      <input type="color" class="highlight-color-picker" id="editor-bg-color" value="#2a2a2f" title="编辑框背景色">
+                      <button class="panel-btn panel-btn-secondary panel-btn-icon" id="prompt-dark-mode-btn" title="切换深色/浅色模式">🌙</button>
                       <input type="range" class="font-size-slider" id="prompt-font-size" min="13" max="32" value="23" title="字体大小">
                       <span class="font-size-value" id="font-size-value">23</span>
                       <select class="toolbar-select" id="prompt-card-select" style="width: 120px;">
@@ -1962,6 +2155,7 @@
                 <div style="display: flex; gap: 8px;">
                   <button class="panel-btn panel-btn-secondary" id="load-config-btn" style="flex: 1;">📂 加载</button>
                   <button class="panel-btn panel-btn-secondary" id="save-config-btn" style="flex: 1;">💾 保存</button>
+                  <button class="panel-btn panel-btn-secondary" id="save-as-btn" style="flex: 1;">📄 另存</button>
                 </div>
                 <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 16px 0;">
                 <button class="panel-btn panel-btn-secondary" id="gallery-btn" style="width: 100%;">🖼️ 打开图库</button>
@@ -1999,6 +2193,9 @@
                     <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
                       <span><strong style="color: #6ee7b7;">Ctrl+S</strong> 提示词库覆盖保存</span>
                       <span><strong style="color: #6ee7b7;">Ctrl+/</strong> 注释当前行</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                      <span><strong style="color: #6ee7b7;">TAB</strong> 隐藏/显示右面板</span>
                     </div>
                     <div style="padding: 4px 0; margin-top: 8px; color: rgba(255,255,255,0.5); font-size: 11px;">
                       <span>提示词高亮：<span style="color: #2d8a4e;">深绿色</span>=注释，<span style="color: #c9444d;">深红色</span>=有权重</span>
@@ -2044,6 +2241,7 @@
         rebootBtn: document.getElementById('reboot-btn'),
         loadConfigBtn: document.getElementById('load-config-btn'),
         saveConfigBtn: document.getElementById('save-config-btn'),
+        saveAsBtn: document.getElementById('save-as-btn'),
         generateBtn: document.getElementById('generate-btn'),
         interruptBtn: document.getElementById('interrupt-btn'),
         clearQueueBtn: document.getElementById('clear-queue-btn'),
@@ -2103,6 +2301,10 @@
         promptMaximizeBtn: document.getElementById('prompt-maximize-btn'),
         promptFontSize: document.getElementById('prompt-font-size'),
         fontSizeValue: document.getElementById('font-size-value'),
+        highlightColorA: document.getElementById('highlight-color-a'),
+        highlightColorB: document.getElementById('highlight-color-b'),
+        editorBgColor: document.getElementById('editor-bg-color'),
+        promptDarkModeBtn: document.getElementById('prompt-dark-mode-btn'),
         promptLibraryList: document.getElementById('prompt-library-list'),
         promptCardList: document.getElementById('prompt-card-list'),
         refreshCardListBtn: document.getElementById('refresh-card-list-btn'),
@@ -2146,6 +2348,7 @@
       };
 
       this.elements.saveConfigBtn.onclick = () => this.saveConfig();
+      this.elements.saveAsBtn.onclick = () => this.saveConfigAs();
       this.elements.loadConfigBtn.onclick = () => this.loadConfigDialog();
 
       this.elements.nodeSearch.oninput = (e) => this.filterNodes(e.target.value);
@@ -2179,6 +2382,13 @@
       this.elements.refreshCardListBtn.onclick = () => this.renderPromptCardList();
       // 字体大小滑竿
       this.elements.promptFontSize.oninput = () => this.changePreviewFontSize();
+      // 高亮颜色选择器
+      this.elements.highlightColorA.oninput = () => this.updateHighlightColors();
+      this.elements.highlightColorB.oninput = () => this.updateHighlightColors();
+      // 编辑框背景色选择器
+      this.elements.editorBgColor.oninput = () => this.updateEditorBgColor();
+      // 深色模式切换
+      this.elements.promptDarkModeBtn.onclick = () => this.togglePromptLibraryDarkMode();
       // 预览文本编辑事件
       this.elements.promptPreviewTextarea.addEventListener('input', () => this.onPreviewTextareaChange());
       // 快捷键注释支持
@@ -2616,11 +2826,28 @@
         // 这里建议：如果正在输入，ESC不关闭面板（浏览器默认行为或退出编辑），其他快捷键无效
         if (isInput && e.key !== 'Escape') return; 
 
-        // --- 新增：ESC 关闭逻辑 ---
+        // --- ESC 关闭逻辑 ---
         if (e.key === 'Escape') {
           e.preventDefault();
           e.stopPropagation();
-          this.hide(); // 调用 hide 方法关闭面板
+          
+          // 如果提示词库面板打开，先关闭提示词库面板
+          if (this.elements.promptLibraryPanel.classList.contains('visible')) {
+            this.togglePromptLibrary();
+            return false;
+          }
+          
+          // 否则关闭主面板
+          this.hide();
+          return false;
+        }
+        // -------------------------
+
+        // --- Tab 切换右侧面板 ---
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          e.stopPropagation();
+          this.toggleRightPanel();
           return false;
         }
         // -------------------------
@@ -2687,9 +2914,23 @@
       const isVisible = panel.classList.contains('visible');
 
       if (isVisible) {
-        // 如果有未保存的提示词编辑，先自动保存
-        if (this.previewUnsaved && this.currentPreviewIndex >= 0 && this.currentPreviewPrompt) {
-          this.autoSavePromptLibrary();
+        // 如果有未保存的编辑，先自动保存
+        if (this.previewUnsaved) {
+          // 如果是卡片编辑模式，保存卡片内容
+          if (this.currentHoveredCardKey) {
+            const newContent = this.elements.promptPreviewTextarea.value;
+            if (newContent) {
+              this.cardValues[this.currentHoveredCardKey] = newContent;
+              // 静默保存面板配置（不下载、不弹提示）
+              this.saveConfigSilent();
+              console.log('[ComfyUI Panel] Auto saved card:', this.currentHoveredCardKey);
+            }
+          } 
+          // 如果是提示词库编辑模式，保存提示词库
+          else if (this.currentPreviewIndex >= 0 && this.currentPreviewPrompt) {
+            this.autoSavePromptLibrary();
+          }
+          this.previewUnsaved = false;
         }
         
         // 隐藏面板
@@ -2733,6 +2974,18 @@
         // 设置为最大化模式
         this.promptLibraryMaximized = true;
         this.updateMaximizeButton();
+        
+        // 应用提示词库主题
+        this.applyPromptLibraryTheme();
+        // 更新颜色选择器显示
+        if (this.elements.highlightColorA) {
+          this.elements.highlightColorA.value = this.highlightColorA;
+        }
+        if (this.elements.highlightColorB) {
+          this.elements.highlightColorB.value = this.highlightColorB;
+        }
+        // 更新编辑框背景色选择器（根据当前模式显示对应颜色）
+        this.updateEditorBgColorPicker();
         
         // 恢复上次的选中状态
         this.restorePromptLibrarySelection();
@@ -2820,6 +3073,93 @@
 
     // 提示词库最大化状态
     promptLibraryMaximized = true;
+    
+    // 提示词库深色模式（默认深色）
+    promptLibraryDarkMode = true;
+    
+    // 高亮颜色
+    highlightColorA = '#6496c8'; // 蓝色系
+    highlightColorB = '#c89664'; // 橙色系
+    
+    // 编辑框背景色（深色/浅色模式分别配置）
+    editorBgColorDark = '#2a2a2f';   // 深色模式默认灰黑色
+    editorBgColorLight = '#ffffff';  // 浅色模式默认白色
+
+    // 切换深色/浅色模式
+    togglePromptLibraryDarkMode() {
+      this.promptLibraryDarkMode = !this.promptLibraryDarkMode;
+      // 切换模式后更新颜色选择器显示
+      this.updateEditorBgColorPicker();
+      this.applyPromptLibraryTheme();
+    }
+
+    // 更新编辑框背景色选择器显示当前模式的颜色
+    updateEditorBgColorPicker() {
+      if (this.elements.editorBgColor) {
+        this.elements.editorBgColor.value = this.promptLibraryDarkMode 
+          ? this.editorBgColorDark 
+          : this.editorBgColorLight;
+      }
+    }
+
+    // 应用提示词库主题
+    applyPromptLibraryTheme() {
+      const panel = this.elements.promptLibraryPanel;
+      const previewContent = this.elements.promptPreviewTextarea?.parentElement;
+      const highlightPre = this.elements.promptHighlightPre;
+      const textarea = this.elements.promptPreviewTextarea;
+      
+      if (this.promptLibraryDarkMode) {
+        panel.classList.remove('light-mode');
+        panel.classList.add('dark-mode');
+        this.elements.promptDarkModeBtn.textContent = '🌙';
+      } else {
+        panel.classList.remove('dark-mode');
+        panel.classList.add('light-mode');
+        this.elements.promptDarkModeBtn.textContent = '☀️';
+      }
+      
+      // 根据当前模式应用对应的编辑框背景色
+      const bgColor = this.promptLibraryDarkMode 
+        ? (this.editorBgColorDark || '#2a2a2f')
+        : (this.editorBgColorLight || '#ffffff');
+      
+      if (previewContent) {
+        previewContent.style.background = bgColor;
+      }
+      if (highlightPre) {
+        highlightPre.style.background = bgColor;
+      }
+      if (textarea) {
+        textarea.style.background = bgColor;
+      }
+    }
+
+    // 更新高亮颜色
+    updateHighlightColors() {
+      this.highlightColorA = this.elements.highlightColorA.value;
+      this.highlightColorB = this.elements.highlightColorB.value;
+      // 重新渲染高亮
+      if (this.elements.promptHighlightPre) {
+        this.renderTextareaHighlight(this.elements.promptHighlightPre, this.elements.promptPreviewTextarea.value);
+      }
+      // 自动保存配置
+      this.saveToLocalStorage();
+    }
+
+    // 更新编辑框背景色
+    updateEditorBgColor() {
+      // 根据当前模式更新对应的背景色变量
+      if (this.promptLibraryDarkMode) {
+        this.editorBgColorDark = this.elements.editorBgColor.value;
+      } else {
+        this.editorBgColorLight = this.elements.editorBgColor.value;
+      }
+      // 应用背景色
+      this.applyPromptLibraryTheme();
+      // 自动保存配置
+      this.saveToLocalStorage();
+    }
 
     // 切换最大化/还原
     togglePromptLibraryMaximize() {
@@ -3194,6 +3534,9 @@
       if (this.currentHoveredCardKey) {
         const newContent = this.elements.promptPreviewTextarea.value;
         this.cardValues[this.currentHoveredCardKey] = newContent;
+        
+        // 标记为未保存（需要保存到配置文件）
+        this.previewUnsaved = true;
         
         // 同步更新UI中的textarea（如果存在）
         const textarea = document.querySelector(`textarea[data-key="${this.currentHoveredCardKey}"]`);
@@ -4923,6 +5266,33 @@
       this.panel.classList.remove('visible');
       this.openBtn.style.display = 'block';
       this.panelVisible = false;
+      
+      // 关闭面板时重置右侧面板状态
+      if (this.rightPanelHidden) {
+        this.toggleRightPanel();
+      }
+    }
+
+    // 切换右侧面板显示/隐藏（Tab键触发）
+    toggleRightPanel() {
+      const previewPanel = this.elements.previewPanel;
+      const resizer = this.elements.resizer;
+      const panelConfig = this.elements.panelConfig;
+      
+      if (this.rightPanelHidden) {
+        // 恢复右侧面板
+        previewPanel.style.width = this.savedPreviewWidth;
+        resizer.style.display = '';
+        panelConfig.style.display = '';
+        this.rightPanelHidden = false;
+      } else {
+        // 隐藏右侧面板
+        this.savedPreviewWidth = previewPanel.style.width || '66.67%';
+        previewPanel.style.width = '100%';
+        resizer.style.display = 'none';
+        panelConfig.style.display = 'none';
+        this.rightPanelHidden = true;
+      }
     }
 
     loadUploadedWorkflow(event) {
@@ -4934,6 +5304,8 @@
           const workflow = JSON.parse(e.target.result); 
           this.setWorkflow(workflow);
           this.resetTabsFromWorkflow();
+          // 清除服务器配置列表选项，避免点保存覆盖原配置
+          this.elements.serverConfigSelect.value = '';
         }
         catch (err) { alert('无法解析工作流文件'); }
       };
@@ -5564,6 +5936,10 @@
         return;
       }
 
+      // 获取高亮颜色
+      const colorA = this.highlightColorA || '#6496c8';
+      const colorB = this.highlightColorB || '#c89664';
+
       // 按行处理
       const lines = text.split('\n');
       const fragment = document.createDocumentFragment();
@@ -5593,10 +5969,12 @@
               // 检查是否是注释片段（以 # 开头）
               const isCommentSegment = segment.trimStart().startsWith('#');
               
-              const bgClass = bgIndex % 2 === 0 ? 'bg-a' : 'bg-b';
+              // 使用自定义颜色
+              const bgColor = bgIndex % 2 === 0 ? colorA : colorB;
               
               const span = document.createElement('span');
-              span.className = `hl-seg ${bgClass}`;
+              span.className = 'hl-seg';
+              span.style.backgroundColor = bgColor + '26'; // 添加透明度 (26 = 15% opacity in hex)
               
               if (isCommentSegment) {
                 const inner = document.createElement('span');
@@ -6967,19 +7345,74 @@
 
     async clearQueue() {
       try {
-        // 先中断当前任务
-        await fetch(this.baseUrl + '/interrupt', { method: 'POST' });
-        // 清空队列
+        // 先获取队列信息
+        const queueResponse = await fetch(this.baseUrl + '/queue');
+        if (!queueResponse.ok) {
+          this.showToast('获取队列信息失败');
+          return;
+        }
+
+        const queueData = await queueResponse.json();
+        console.log('[ComfyUI Panel] Queue data:', queueData);
+
+        // 获取队列中所有待处理任务的ID
+        const queueRunning = queueData.queue_running || [];
+        const queuePending = queueData.queue_pending || [];
+
+        console.log('[ComfyUI Panel] Running:', queueRunning);
+        console.log('[ComfyUI Panel] Pending:', queuePending);
+
+        // 提取待处理任务的ID (prompt_id)
+        // ComfyUI 队列格式: [数字序号, prompt_id(UUID), workflow, extra_data, outputs]
+        const deleteIds = [];
+
+        for (const item of queuePending) {
+          if (Array.isArray(item) && item.length >= 2) {
+            // 第二个元素是真正的 prompt_id (UUID格式)
+            const promptId = item[1];
+            if (promptId && typeof promptId === 'string') {
+              deleteIds.push(promptId);
+            }
+          }
+        }
+
+        // 提取正在运行的任务ID（不删除）
+        const runningIds = [];
+        for (const item of queueRunning) {
+          if (Array.isArray(item) && item.length >= 2) {
+            const promptId = item[1];
+            if (promptId && typeof promptId === 'string') {
+              runningIds.push(promptId);
+            }
+          }
+        }
+
+        // 从待删除列表中排除正在运行的任务
+        const idsToDelete = deleteIds.filter(id => !runningIds.includes(id));
+
+        console.log('[ComfyUI Panel] Delete IDs (UUID):', idsToDelete);
+        console.log('[ComfyUI Panel] Running IDs (excluded):', runningIds);
+
+        if (idsToDelete.length === 0) {
+          this.showToast('队列为空');
+          return;
+        }
+
+        // 清空队列中的待处理任务
         const response = await fetch(this.baseUrl + '/queue', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ delete: [] })
+          body: JSON.stringify({ delete: idsToDelete })
         });
-        
+
+        console.log('[ComfyUI Panel] Clear queue response:', response.status);
+
         if (response.ok) {
-          this.showToast('队列已清空');
+          this.showToast(`已清空 ${idsToDelete.length} 个待处理任务`);
+        } else {
+          this.showToast('清空队列失败');
         }
-        
+
         // 检查队列状态
         this.checkQueueStatus();
       } catch (e) {
@@ -7256,15 +7689,31 @@
       URL.revokeObjectURL(url);
       this.showToast('配置已下载到本地');
 
+      await this.saveConfigToServer(config);
+    }
+
+    // 静默保存到服务器（不下载、不弹提示）
+    async saveConfigSilent() {
+      const config = this.getConfig();
+      await this.saveConfigToServer(config, true);
+    }
+
+    // 保存配置到服务器
+    async saveConfigToServer(config, silent = false) {
       const select = this.elements.serverConfigSelect;
       let filename = select.value;
+      
+      // 如果没有选中的配置，弹出输入框（静默模式不弹）
       if (!filename) {
+        if (silent) {
+          console.log('[ComfyUI Panel] No config selected, skip silent save');
+          return;
+        }
         filename = prompt('请输入要保存到服务器的文件名（不包含扩展名）', 'my_config');
         if (!filename) return;
         filename = filename + '.json';
-      } else {
-        if (!confirm(`确定要覆盖服务器上的配置 "${filename}" 吗？`)) return;
       }
+      // 有选中的配置，直接覆盖，不弹提示
 
       try {
         const response = await fetch(this.baseUrl + '/comfyui_panel/save_config', {
@@ -7277,7 +7726,52 @@
         });
         const result = await response.json();
         if (result.success) {
-          this.showToast(`配置已保存到服务器: ${result.filename}`);
+          if (!silent) {
+            this.showToast(`配置已保存到服务器: ${result.filename}`);
+          }
+          // 刷新配置列表
+          await this.loadServerConfigList();
+          // 选定保存的配置
+          select.value = result.filename;
+          // 保存为上次使用的配置
+          this.saveLastUsedConfig(result.filename);
+        } else {
+          if (!silent) {
+            alert('保存到服务器失败: ' + result.error);
+          }
+        }
+      } catch (e) {
+        console.error('[ComfyUI Panel] Save to server failed:', e);
+        if (!silent) {
+          alert('保存到服务器失败: ' + e.message);
+        }
+      }
+    }
+
+    // 另存为功能
+    async saveConfigAs() {
+      const config = this.getConfig();
+      const select = this.elements.serverConfigSelect;
+      
+      // 获取默认文件名（当前选中的配置名或空）
+      const defaultName = select.value ? select.value.replace('.json', '') : 'my_config';
+      
+      let filename = prompt('请输入新的文件名（不包含扩展名）', defaultName);
+      if (!filename) return;
+      filename = filename + '.json';
+
+      try {
+        const response = await fetch(this.baseUrl + '/comfyui_panel/save_config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: filename,
+            config: config
+          })
+        });
+        const result = await response.json();
+        if (result.success) {
+          this.showToast(`配置已另存为: ${result.filename}`);
           // 刷新配置列表
           await this.loadServerConfigList();
           // 选定保存的配置
@@ -7288,7 +7782,7 @@
           alert('保存到服务器失败: ' + result.error);
         }
       } catch (e) {
-        console.error('[ComfyUI Panel] Save to server failed:', e);
+        console.error('[ComfyUI Panel] Save as failed:', e);
         alert('保存到服务器失败: ' + e.message);
       }
     }
@@ -7369,7 +7863,7 @@
         if (!files || files.length === 0) {
           // 没有配置文件，加载提示词库后返回
           this.loadPromptLibraryConfig();
-          return;
+          return false;
         }
 
         // 尝试加载上次使用的配置
@@ -7399,12 +7893,16 @@
           this.showToast(`已自动加载: ${configToLoad}`);
           // 更新上次使用的配置记录
           this.saveLastUsedConfig(configToLoad);
+          // 加载提示词库
+          this.loadPromptLibraryConfig();
+          return true;
         }
       } catch (e) {
         console.error('[ComfyUI Panel] Auto load last config failed:', e);
       }
       // 无论是否加载了配置，都加载提示词库
       this.loadPromptLibraryConfig();
+      return false;
     }
 
     async loadServerConfig() {
@@ -7447,6 +7945,8 @@
             const config = JSON.parse(ev.target.result);
             this.applyConfig(config);
             this.saveToLocalStorage();
+            // 清除服务器配置列表选项，避免点保存覆盖原配置
+            this.elements.serverConfigSelect.value = '';
             this.showToast('配置已加载');
           } catch (err) { alert('无法解析配置文件'); }
         };
@@ -7476,6 +7976,12 @@
         seedEnabled: this.seedEnabled,
         textareaHeights: this.textareaHeights,
         theme: this.theme,
+        // 提示词库设置
+        promptLibraryDarkMode: this.promptLibraryDarkMode,
+        highlightColorA: this.highlightColorA,
+        highlightColorB: this.highlightColorB,
+        editorBgColorDark: this.editorBgColorDark,
+        editorBgColorLight: this.editorBgColorLight,
         // 保存本地输出设置
         localOutputConfigs: this.getLocalOutputConfigs()
       };
@@ -7618,6 +8124,41 @@
         this.updateThemeStyles();
       }
 
+      // 恢复提示词库设置
+      if (config.promptLibraryDarkMode !== undefined) {
+        this.promptLibraryDarkMode = config.promptLibraryDarkMode;
+      }
+      if (config.highlightColorA) {
+        this.highlightColorA = config.highlightColorA;
+        if (this.elements.highlightColorA) {
+          this.elements.highlightColorA.value = config.highlightColorA;
+        }
+      }
+      if (config.highlightColorB) {
+        this.highlightColorB = config.highlightColorB;
+        if (this.elements.highlightColorB) {
+          this.elements.highlightColorB.value = config.highlightColorB;
+        }
+      }
+      // 加载编辑框背景色（支持新旧配置格式）
+      if (config.editorBgColorDark) {
+        this.editorBgColorDark = config.editorBgColorDark;
+      }
+      if (config.editorBgColorLight) {
+        this.editorBgColorLight = config.editorBgColorLight;
+      }
+      // 兼容旧配置格式
+      if (config.editorBgColor && !config.editorBgColorDark && !config.editorBgColorLight) {
+        // 旧配置只有一个颜色，根据当前模式设置
+        if (this.promptLibraryDarkMode) {
+          this.editorBgColorDark = config.editorBgColor;
+        } else {
+          this.editorBgColorLight = config.editorBgColor;
+        }
+      }
+      // 应用提示词库主题
+      this.applyPromptLibraryTheme();
+
       // 最后渲染卡片（这样cardValues已经正确恢复）
       if (this.currentTab) {
         // 确保 activeCards 和 currentTab.nodeIds 是同一个引用
@@ -7660,13 +8201,14 @@
     }
 
     async loadConfig() {
-      // 首先尝试从本地存储加载
-      this.loadFromLocalStorage();
-      // 然后尝试自动加载服务器上最后修改的配置文件
-      this.autoLoadLastConfig();
+      // 先尝试自动加载服务器上最后修改的配置文件
+      const serverLoaded = await this.autoLoadLastConfig();
+      // 如果服务器配置加载失败，再尝试从本地存储加载
+      if (!serverLoaded) {
+        this.loadFromLocalStorage();
+      }
     }
   }
-
 
   function init() { console.log('[ComfyUI Panel] Initializing...'); window.comfyUIPanel = new ComfyUIPanel(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
