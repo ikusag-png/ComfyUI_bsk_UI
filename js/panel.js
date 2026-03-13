@@ -1084,8 +1084,8 @@
         }
         .panel-btn-primary { background: rgb(235 235 235 / 40%); color: black; border: 1px solid rgb(120 220 220 / 61%); backdrop-filter: blur(8px); box-shadow: 0 2px 8px rgba(120, 220, 220, 0.2); }
         .panel-btn-primary:hover { background: rgba(120, 220, 220, 0.4); transform: scale(1.02); }
-        .panel-btn-secondary { background: rgba(221, 232, 237, 0.34); color: black; border: 1px solid rgba(255, 255, 255, 0.2); }
-        .panel-btn-secondary:hover { background: rgba(236, 227, 234, 0.6); }
+        .panel-btn-secondary { background: rgb(196 241 206 / 34%); color: black; border: 1px solid rgba(255, 255, 255, 0.2); }
+        .panel-btn-secondary:hover { background: rgba(200, 255, 210, 0.6); }
         .panel-btn-secondary.active-panel { background: rgba(102, 126, 234, 0.3); border-color: rgba(102, 126, 234, 0.5); }
         .panel-btn-danger { background: #ef4444; color: white; }
         .panel-btn-danger:hover { background: #dc2626; }
@@ -1208,11 +1208,11 @@
           align-items: center;
         }
         .panel-btn-warning {
-          background: rgba(95, 95, 95, 0.9) !important;
+          background: rgba(245, 158, 11, 0.9) !important;
           color: white !important;
         }
         .panel-btn-warning:hover {
-          background: rgba(181, 181, 181, 1) !important;
+          background: rgba(245, 158, 11, 1) !important;
         }
         .panel-btn-danger-back {
           background: rgba(239, 68, 68, 0.9) !important;
@@ -1656,9 +1656,17 @@
         .crop-settings input { padding: 4px 6px; font-size: 12px; }
         .crop-settings .link-btn { padding: 4px 6px; font-size: 10px; }
         .crop-settings .link-btn.active { background: rgba(102, 126, 234, 0.5); }
+        .crop-settings .swap-btn { padding: 4px 6px; font-size: 10px; min-width: 28px; }
+        .crop-settings .swap-btn:hover { background: rgba(102, 126, 234, 0.4); }
+        
+        .resolution-preset { display: flex; gap: 4px; margin-top: 6px; align-items: center; }
+        .resolution-preset select { padding: 4px 6px; font-size: 12px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 4px; color: white; min-width: 80px; }
+        .resolution-preset select option { background: #2a2a3e; color: white; }
 
-        .path-input-group { display: flex; gap: 4px; margin-top: 6px; }
+        .path-input-group { display: flex; gap: 4px; margin-top: 6px; flex: 1; }
         .path-input-group input { flex: 1; }
+
+        .resolution-path-row { display: flex; gap: 6px; margin-top: 6px; align-items: center; }
 
         .local-output-settings { margin-top: 4px; padding: 6px 8px; background: rgba(102, 126, 234, 0.08); border-radius: 4px; border: 1px solid rgba(102, 126, 234, 0.15); }
         .local-output-toggle:hover { background: rgba(255, 255, 255, 0.03); border-radius: 4px; }
@@ -6102,14 +6110,42 @@
       const pathGroup = document.createElement('div');
       pathGroup.className = 'path-input-group';
       const savedPath = this.cardValues[key];
-      pathGroup.innerHTML = `<input type="text" class="form-input" placeholder="路径" value="${savedPath || input.value || ''}"><button class="panel-btn panel-btn-secondary panel-btn-small">加载</button>`;
+      pathGroup.innerHTML = `<input type="text" class="form-input" placeholder="路径" value="${savedPath || input.value || ''}"><button class="panel-btn panel-btn-secondary panel-btn-small">加载</button><button class="panel-btn panel-btn-secondary panel-btn-small open-btn">打开</button>`;
+
+      // 常用分辨率预设下拉列表
+      const resolutionPreset = document.createElement('div');
+      resolutionPreset.className = 'resolution-preset';
+      resolutionPreset.innerHTML = `
+        <select class="resolution-select">
+          <option value="">常用分辨率</option>
+          <option value="512x512">512 × 512 (正方形)</option>
+          <option value="768x1024">768 × 1024 (竖版)</option>
+          <option value="896x1152">896 × 1152 (竖版)</option>
+          <option value="896x1536">896 × 1536 (竖版)</option>
+          <option value="1024x1024">1024 × 1024 (正方形)</option>
+          <option value="1024x1365">1024 × 1365 (3:4)</option>
+          <option value="1024x1536">1024 × 1536 (2:3)</option>
+          <option value="1152x896">1152 × 896 (横版)</option>
+          <option value="1280x720">1280 × 720 (16:9)</option>
+          <option value="1344x768">1344 × 768 (横版)</option>
+          <option value="1536x896">1536 × 896 (横版)</option>
+          <option value="1536x1024">1536 × 1024 (3:2)</option>
+          <option value="1920x1080">1920 × 1080 (16:9)</option>
+        </select>
+      `;
+
+      // 创建包含分辨率下拉列表和路径输入的行容器
+      const resolutionPathRow = document.createElement('div');
+      resolutionPathRow.className = 'resolution-path-row';
+      resolutionPathRow.appendChild(resolutionPreset);
+      resolutionPathRow.appendChild(pathGroup);
 
       const cropSettings = document.createElement('div');
       cropSettings.className = 'crop-settings';
       cropSettings.innerHTML = `
         <span style="color: rgba(255,255,255,0.6); font-size: 10px;">裁剪:</span>
         <input type="number" class="form-input crop-width" value="${this.globalCropSize.width}" min="64" max="4096">
-        <span style="color: rgba(255,255,255,0.4);">×</span>
+        <button class="panel-btn panel-btn-secondary swap-btn" title="交换宽高">⇄</button>
         <input type="number" class="form-input crop-height" value="${this.globalCropSize.height}" min="64" max="4096">
         <button class="panel-btn panel-btn-secondary link-btn ${this.linkCropSize ? 'active' : ''}">🔗</button>
         <button class="panel-btn panel-btn-secondary panel-btn-small max-btn">最大</button>
@@ -6153,6 +6189,39 @@
         }
       };
 
+      // 对换宽高按钮事件
+      const swapWidthHeight = () => {
+        const widthInput = cropSettings.querySelector('.crop-width');
+        const heightInput = cropSettings.querySelector('.crop-height');
+        const w = parseInt(widthInput.value) || 896;
+        const h = parseInt(heightInput.value) || 1536;
+        widthInput.value = h;
+        heightInput.value = w;
+        updateCropSize();
+        // 如果链接按钮处于选中状态，执行所有图像卡片的最大化
+        if (this.linkCropSize) {
+          this.maximizeAllImageCards();
+        }
+      };
+
+      // 分辨率预设选择事件
+      const onResolutionPresetChange = (e) => {
+        const value = e.target.value;
+        if (!value) return;
+        const [w, h] = value.split('x').map(v => parseInt(v));
+        const widthInput = cropSettings.querySelector('.crop-width');
+        const heightInput = cropSettings.querySelector('.crop-height');
+        widthInput.value = w;
+        heightInput.value = h;
+        updateCropSize();
+        // 如果链接按钮处于选中状态，执行所有图像卡片的最大化
+        if (this.linkCropSize) {
+          this.maximizeAllImageCards();
+        }
+        // 重置下拉列表选中状态
+        e.target.value = '';
+      };
+
       const maximizeCrop = () => {
         if (!currentImageData || !cropBox) return;
         const w = parseInt(cropSettings.querySelector('.crop-width').value) || 896;
@@ -6164,8 +6233,10 @@
 
       cropSettings.querySelector('.crop-width').oninput = updateCropSize;
       cropSettings.querySelector('.crop-height').oninput = updateCropSize;
+      cropSettings.querySelector('.swap-btn').onclick = swapWidthHeight;
       cropSettings.querySelector('.link-btn').onclick = (e) => { this.linkCropSize = !this.linkCropSize; e.target.classList.toggle('active', this.linkCropSize); };
       cropSettings.querySelector('.max-btn').onclick = maximizeCrop;
+      resolutionPreset.querySelector('.resolution-select').onchange = onResolutionPresetChange;
 
       const handleImageLoad = (img, filename) => {
         currentImageData = {
@@ -6242,7 +6313,8 @@
         } catch (e) { alert('粘贴失败'); }
       };
 
-      pathGroup.querySelector('button').onclick = () => {
+      // 加载按钮事件
+      pathGroup.querySelector('button:not(.open-btn)').onclick = () => {
         const path = pathGroup.querySelector('input').value.trim();
         if (!path) return;
         this.cardValues[key] = path;
@@ -6255,6 +6327,11 @@
           container.classList.add('has-image');
         };
         img.src = this.baseUrl + `/view?filename=${encodeURIComponent(path)}&type=input`;
+      };
+
+      // 打开按钮事件
+      pathGroup.querySelector('.open-btn').onclick = () => {
+        fileInput.click();
       };
 
       const savedFilename = this.cardValues[key];
@@ -6278,7 +6355,7 @@
 
       wrapper.appendChild(fileListRow);
       wrapper.appendChild(container);
-      wrapper.appendChild(pathGroup);
+      wrapper.appendChild(resolutionPathRow);
       wrapper.appendChild(cropSettings);
       wrapper.appendChild(localOutputSettings);
       wrapper.appendChild(fileInput);
@@ -6483,6 +6560,34 @@
       data.cropX = boxX; data.cropY = boxY; data.cropW = boxW; data.cropH = boxH;
       const cropInfo = cropBox.querySelector('.crop-info');
       if (cropInfo) cropInfo.textContent = `${Math.round(boxW)} × ${Math.round(boxH)}`;
+    }
+
+    // 对所有图像加载卡片执行最大化操作
+    maximizeAllImageCards() {
+      const cropW = this.globalCropSize.width;
+      const cropH = this.globalCropSize.height;
+      
+      // 遍历所有图像卡片数据
+      Object.keys(this.imageCropData).forEach(key => {
+        const cardData = this.imageCropData[key];
+        if (!cardData) return;
+        
+        const data = cardData.getData();
+        const cropSettings = cardData.cropSettings;
+        const container = cardData.container;
+        
+        if (!data || !cropSettings || !container) return;
+        
+        // 获取裁剪框元素
+        const cropBox = container.querySelector('.crop-box');
+        if (!cropBox) return;
+        
+        // 执行最大化
+        this.maximizeCropBox(cropBox, data, cropW, cropH);
+        
+        // 标记为需要上传
+        this.markCropDirtyAndScheduleUpload(key);
+      });
     }
 
     bindCropDrag(cropBox, imgEl, cropSettings, data, key) {
