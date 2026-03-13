@@ -1,7 +1,8 @@
 // panel.js (前端部分 - 改进版)
 /**
- * ComfyUI Panel Extension v3.2
+ * ComfyUI_bsk_UI v3.3
  * 改进版：优化图片裁剪上传逻辑，按需上传+防抖，生成时仅上传变更的图片
+ * 新增：支持独立HTML模式运行，可通过输入ComfyUI URL连接
  */
 (function() {
   'use strict';
@@ -117,6 +118,17 @@
 
   class ComfyUIPanel {
     constructor() {
+      // 动态检测运行环境：是否在ComfyUI前端
+      // 优先检查显式的独立模式标志（在独立HTML中设置）
+      // 然后检查 app 对象是否存在
+      this.isStandaloneMode = window.COMFYUI_PANEL_STANDALONE === true || 
+                              (typeof app === 'undefined' || !app.api);
+      console.log('[ComfyUI Panel] Running in', this.isStandaloneMode ? 'standalone mode' : 'ComfyUI embedded mode');
+      
+      this.isConnected = false;
+      this.socket = null;
+      this.connectionStatus = 'disconnected'; // 'disconnected', 'connecting', 'connected', 'error'
+      
       this.panelVisible = false;
       this.workflow = null;
       this.parsedNodes = [];
@@ -215,14 +227,24 @@
         placeholderColor: 'rgba(255, 255, 255, 0.6)'
       };
 
+      // 初始化 baseUrl
       this.baseUrl = '';
-      if (typeof app !== 'undefined' && app.api && app.api.api_base) {
+      if (!this.isStandaloneMode && typeof app !== 'undefined' && app.api && app.api.api_base) {
+        // ComfyUI 嵌入模式：从 app.api 获取
         this.baseUrl = app.api.api_base;
         if (this.baseUrl.endsWith('/')) {
           this.baseUrl = this.baseUrl.slice(0, -1);
         }
+        this.isConnected = true;
+        this.connectionStatus = 'connected';
+      } else {
+        // 独立模式：尝试从 localStorage 恢复上次连接的 URL
+        const savedUrl = localStorage.getItem('comfyui_panel_server_url');
+        if (savedUrl) {
+          this.baseUrl = savedUrl;
+        }
       }
-      console.log('[ComfyUI Panel] baseUrl:', this.baseUrl);
+      console.log('[ComfyUI Panel] baseUrl:', this.baseUrl, 'isStandaloneMode:', this.isStandaloneMode);
 
       this.createUI();
       this.bindEvents();
@@ -233,7 +255,303 @@
         this.addTab('常用', 'main');
       }
 
+      // 独立模式：如果有保存的URL，尝试自动连接
+      if (this.isStandaloneMode && this.baseUrl) {
+        this.connectToServer(this.baseUrl);
+      }
+
       console.log('[ComfyUI Panel] Panel initialized');
+    }
+
+    // 独立模式：连接到 ComfyUI 服务器
+    async connectToServer(url) {
+      // 规范化 URL
+      let serverUrl = url.trim();
+      if (serverUrl.endsWith('/')) {
+        serverUrl = serverUrl.slice(0, -1);
+      }
+      
+      this.connectionStatus = 'connecting';
+      this.updateConnectionUI();
+      
+      try {
+        // 测试连接
+        const response = await fetch(serverUrl + '/system_stats?t=' + Date.now(), {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        
+        // 连接成功
+        this.baseUrl = serverUrl;
+        this.isConnected = true;
+        this.connectionStatus = 'connected';
+        
+        // 保存到 localStorage
+        localStorage.setItem('comfyui_panel_server_url', serverUrl);
+        
+        // 生成客户端ID
+        this.clientId = this.clientId || this.generateClientId();
+        
+        // 建立 WebSocket 连接
+        this.connectWebSocket();
+        
+        this.updateConnectionUI();
+        this.showToast('已连接到 ' + serverUrl);
+        
+        console.log('[ComfyUI Panel] Connected to server:', serverUrl);
+      } catch (e) {
+        console.error('[ComfyUI Panel] Connection failed:', e);
+        this.isConnected = false;
+        this.connectionStatus = 'error';
+        this.updateConnectionUI();
+        this.showToast('连接失败: ' + e.message);
+      }
+    }
+
+    // 生成客户端ID
+    generateClientId() {
+      return 'panel_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+    }
+
+    // 独立模式：建立 WebSocket 连接
+    connectWebSocket() {
+      if (!this.baseUrl) return;
+      
+      // 关闭现有连接
+      if (this.socket) {
+        this.socket.close();
+      }
+      
+      const wsProtocol = this.baseUrl.startsWith('https') ? 'wss' : 'ws';
+      const wsUrl = this.baseUrl.replace(/^https?/, wsProtocol) + '/ws?clientId=' + this.clientId;
+      
+      console.log('[ComfyUI Panel] Connecting WebSocket:', wsUrl);
+      
+      try {
+        this.socket = new WebSocket(wsUrl);
+        // 设置二进制类型为 arraybuffer
+        this.socket.binaryType = 'arraybuffer';
+        
+        this.socket.onopen = () => {
+          console.log('[ComfyUI Panel] WebSocket connected');
+        };
+        
+        this.socket.onclose = (event) => {
+          console.log('[ComfyUI Panel] WebSocket closed:', event.code, event.reason);
+          // 尝试重连
+          if (this.isConnected && this.isStandaloneMode) {
+            setTimeout(() => this.connectWebSocket(), 3000);
+          }
+        };
+        
+        this.socket.onerror = (error) => {
+          console.error('[ComfyUI Panel] WebSocket error:', error);
+        };
+        
+        this.socket.onmessage = (event) => {
+          if (event.data instanceof ArrayBuffer) {
+            this.handleBinaryMessage(event.data);
+          } else if (typeof event.data === 'string') {
+            try {
+              const msg = JSON.parse(event.data);
+              this.handleWebSocketMessage(msg);
+            } catch (e) {}
+          }
+        };
+      } catch (e) {
+        console.error('[ComfyUI Panel] WebSocket connection error:', e);
+      }
+    }
+
+    // 处理 WebSocket 消息
+    handleWebSocketMessage(msg) {
+      // console.log('[ComfyUI Panel] WebSocket message:', msg.type);
+      
+      switch (msg.type) {
+        case 'status':
+          if (msg.data?.status?.exec_info?.queue_remaining !== undefined) {
+            this.queueRemaining = msg.data.status.exec_info.queue_remaining;
+            this.updateQueueDisplay();
+          }
+          break;
+        case 'progress':
+          if (msg.data) {
+            this.updateProgress(msg.data.value, msg.data.max);
+          }
+          break;
+        case 'executing':
+          if (msg.data === null || msg.data?.node === null) {
+            this.onExecutionComplete();
+            this.checkQueueStatus();
+          }
+          break;
+        case 'execution_complete':
+          this.onExecutionComplete();
+          this.checkQueueStatus();
+          break;
+        case 'executed':
+          if (msg.data) {
+            this.handleExecutedMessage(msg.data);
+          }
+          break;
+        case 'execution_error':
+          this.onExecutionError(msg.data);
+          this.checkQueueStatus();
+          break;
+        case 'VHS_latentpreview':
+          if (msg.data && msg.data.length > 0) {
+            this.isVideoGeneration = true;
+            this.videoTotalFrames = msg.data.length;
+            this.videoRate = msg.data.rate || 16;
+            this.clearPreviewFrames();
+          }
+          break;
+        case 'progress_state':
+          if (this.isVideoGeneration && this.previewFrames.length > 1) {
+            this.startFrameAnimation();
+          }
+          break;
+      }
+    }
+
+    // 处理 executed 消息
+    handleExecutedMessage(data) {
+      const promptId = data.prompt_id;
+      const nodeId = data.node;
+      const output = data.output;
+
+      if (this.currentPromptId && promptId === this.currentPromptId) {
+        if (this.outputNodeIds.has(nodeId)) {
+          this.completedOutputNodes.add(nodeId);
+        }
+      }
+
+      const isOutputNode = this.outputNodeIds.has(nodeId);
+      const videoExtensions = ['.mp4', '.webm', '.mov', '.avi', '.mkv', '.gif'];
+      let hasVideoOutput = false;
+      
+      if (output?.images) {
+        for (const img of output.images) {
+          const fileName = img.filename.toLowerCase();
+          if (videoExtensions.some(ext => fileName.endsWith(ext))) {
+            hasVideoOutput = true;
+            break;
+          }
+        }
+      }
+      
+      if (output?.videos || output?.gifs) {
+        hasVideoOutput = true;
+      }
+      
+      if (hasVideoOutput) {
+        if (output?.images) {
+          const videos = [];
+          const images = [];
+          
+          output.images.forEach(img => {
+            const fileName = img.filename.toLowerCase();
+            const isVideo = videoExtensions.some(ext => fileName.endsWith(ext));
+            if (isVideo) {
+              videos.push(img);
+            } else {
+              images.push(img);
+            }
+          });
+          
+          if (videos.length > 0) {
+            this.onVideosGenerated(videos, nodeId);
+          }
+          if (images.length > 0 && isOutputNode) {
+            this.onImagesGenerated(images, nodeId);
+          }
+        }
+        
+        if (output?.videos) {
+          this.onVideosGenerated(output.videos, nodeId);
+        }
+        
+        if (output?.gifs) {
+          this.onVideosGenerated(output.gifs, nodeId);
+        }
+      } else if (isOutputNode) {
+        if (output?.images) {
+          this.onImagesGenerated(output.images, nodeId);
+        }
+      }
+    }
+
+    // 更新连接状态 UI
+    updateConnectionUI() {
+      const statusEl = document.getElementById('connection-status');
+      const urlInput = document.getElementById('server-url-input');
+      const connectBtn = document.getElementById('connect-btn');
+      const connectionPanel = document.getElementById('connection-panel');
+      
+      if (!statusEl) return;
+      
+      switch (this.connectionStatus) {
+        case 'connecting':
+          statusEl.textContent = '连接中...';
+          statusEl.className = 'connection-status connecting';
+          if (connectBtn) connectBtn.disabled = true;
+          break;
+        case 'connected':
+          statusEl.textContent = '已连接';
+          statusEl.className = 'connection-status connected';
+          if (urlInput) urlInput.value = this.baseUrl;
+          if (connectBtn) connectBtn.disabled = false;
+          // 连接成功后隐藏连接面板
+          if (connectionPanel) {
+            connectionPanel.classList.remove('visible');
+          }
+          break;
+        case 'error':
+          statusEl.textContent = '连接失败';
+          statusEl.className = 'connection-status error';
+          if (connectBtn) connectBtn.disabled = false;
+          break;
+        default:
+          statusEl.textContent = '未连接';
+          statusEl.className = 'connection-status disconnected';
+      }
+    }
+
+    /**
+     * 创建并加载图片，在独立模式下设置 crossOrigin
+     * @param {string} src - 图片URL
+     * @returns {Promise<HTMLImageElement>}
+     */
+    loadImage(src) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        // 在独立模式下设置 crossOrigin 以支持跨域图片
+        if (this.isStandaloneMode || window.COMFYUI_PANEL_STANDALONE) {
+          img.crossOrigin = 'anonymous';
+        }
+        img.onload = () => resolve(img);
+        img.onerror = (e) => reject(new Error(`Failed to load image: ${src}`));
+        img.src = src;
+      });
+    }
+
+    /**
+     * 同步创建图片元素，在独立模式下设置 crossOrigin
+     * @param {string} src - 图片URL
+     * @returns {HTMLImageElement}
+     */
+    createImageElement(src) {
+      const img = new Image();
+      // 在独立模式下设置 crossOrigin 以支持跨域图片
+      if (this.isStandaloneMode || window.COMFYUI_PANEL_STANDALONE) {
+        img.crossOrigin = 'anonymous';
+      }
+      if (src) img.src = src;
+      return img;
     }
 
     createUI() {
@@ -246,6 +564,178 @@
       const style = document.createElement('style');
       style.id = 'comfyui-panel-styles';
       style.textContent = `
+        /* 连接状态面板样式 - 独立模式 */
+        #connection-panel {
+          display: none;
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+          z-index: 10001;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        #connection-panel.visible { display: flex; }
+        
+        .connection-panel-content {
+          background: rgba(255, 255, 255, 0.1);
+          backdrop-filter: blur(10px);
+          border-radius: 16px;
+          padding: 40px;
+          max-width: 500px;
+          width: 90%;
+          text-align: center;
+        }
+        
+        .connection-panel-title {
+          color: white;
+          font-size: 28px;
+          font-weight: 600;
+          margin-bottom: 10px;
+        }
+        
+        .connection-panel-subtitle {
+          color: rgba(255, 255, 255, 0.7);
+          font-size: 14px;
+          margin-bottom: 30px;
+        }
+        
+        .connection-input-group {
+          display: flex;
+          gap: 10px;
+          margin-bottom: 20px;
+        }
+        
+        .connection-input-group input {
+          flex: 1;
+          padding: 12px 16px;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.1);
+          color: white;
+          font-size: 16px;
+          outline: none;
+          transition: all 0.2s;
+        }
+        
+        .connection-input-group input:focus {
+          border-color: #667eea;
+          background: rgba(255, 255, 255, 0.15);
+        }
+        
+        .connection-input-group input::placeholder {
+          color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .connection-btn {
+          padding: 12px 24px;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          border: none;
+          border-radius: 8px;
+          font-size: 16px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        
+        .connection-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .connection-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          transform: none;
+        }
+        
+        .connection-status {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          border-radius: 20px;
+          font-size: 14px;
+          margin-top: 20px;
+        }
+        
+        .connection-status::before {
+          content: '';
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+        }
+        
+        .connection-status.disconnected {
+          background: rgba(239, 68, 68, 0.2);
+          color: #fca5a5;
+        }
+        .connection-status.disconnected::before { background: #ef4444; }
+        
+        .connection-status.connecting {
+          background: rgba(234, 179, 8, 0.2);
+          color: #fde047;
+        }
+        .connection-status.connecting::before { 
+          background: #eab308; 
+          animation: pulse 1s infinite;
+        }
+        
+        .connection-status.connected {
+          background: rgba(34, 197, 94, 0.2);
+          color: #86efac;
+        }
+        .connection-status.connected::before { background: #22c55e; }
+        
+        .connection-status.error {
+          background: rgba(239, 68, 68, 0.2);
+          color: #fca5a5;
+        }
+        .connection-status.error::before { background: #ef4444; }
+        
+        .connection-help {
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 12px;
+          margin-top: 20px;
+          line-height: 1.6;
+        }
+        
+        .connection-help code {
+          background: rgba(255, 255, 255, 0.1);
+          padding: 2px 6px;
+          border-radius: 4px;
+          font-family: monospace;
+        }
+        
+        /* 工具栏连接状态指示器 */
+        .toolbar-connection-status {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 10px;
+          background: rgba(0, 0, 0, 0.2);
+          border-radius: 4px;
+          font-size: 12px;
+          color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .toolbar-connection-status .status-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+        }
+        
+        .toolbar-connection-status.connected .status-dot { background: #22c55e; }
+        .toolbar-connection-status.disconnected .status-dot { background: #ef4444; }
+        .toolbar-connection-status.connecting .status-dot { background: #eab308; animation: pulse 1s infinite; }
+        
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        
         #comfyui-panel-open-btn {
           position: fixed; top: 10px; right: 10px; z-index: 9999;
           width: 40px; height: 40px; padding: 0;
@@ -594,8 +1084,8 @@
         }
         .panel-btn-primary { background: rgb(235 235 235 / 40%); color: black; border: 1px solid rgb(120 220 220 / 61%); backdrop-filter: blur(8px); box-shadow: 0 2px 8px rgba(120, 220, 220, 0.2); }
         .panel-btn-primary:hover { background: rgba(120, 220, 220, 0.4); transform: scale(1.02); }
-        .panel-btn-secondary { background: rgb(196 241 206 / 34%); color: black; border: 1px solid rgba(255, 255, 255, 0.2); }
-        .panel-btn-secondary:hover { background: rgba(200, 255, 210, 0.6); }
+        .panel-btn-secondary { background: rgba(221, 232, 237, 0.34); color: black; border: 1px solid rgba(255, 255, 255, 0.2); }
+        .panel-btn-secondary:hover { background: rgba(236, 227, 234, 0.6); }
         .panel-btn-secondary.active-panel { background: rgba(102, 126, 234, 0.3); border-color: rgba(102, 126, 234, 0.5); }
         .panel-btn-danger { background: #ef4444; color: white; }
         .panel-btn-danger:hover { background: #dc2626; }
@@ -718,11 +1208,11 @@
           align-items: center;
         }
         .panel-btn-warning {
-          background: rgba(245, 158, 11, 0.9) !important;
+          background: rgba(95, 95, 95, 0.9) !important;
           color: white !important;
         }
         .panel-btn-warning:hover {
-          background: rgba(245, 158, 11, 1) !important;
+          background: rgba(181, 181, 181, 1) !important;
         }
         .panel-btn-danger-back {
           background: rgba(239, 68, 68, 0.9) !important;
@@ -1216,7 +1706,35 @@
     createMainPanel() {
       const panel = document.createElement('div');
       panel.id = 'comfyui-panel-main';
+      
+      // 检查是否是真正的独立模式（显式标志或 app 不存在）
+      const isExplicitStandalone = window.COMFYUI_PANEL_STANDALONE === true;
+      
+      // 独立模式：添加连接面板
+      let connectionPanelHTML = '';
+      if (isExplicitStandalone) {
+        connectionPanelHTML = `
+        <!-- 连接面板 - 独立模式 -->
+        <div id="connection-panel" class="${this.isConnected ? '' : 'visible'}">
+          <div class="connection-panel-content">
+            <div class="connection-panel-title">ComfyUI Panel</div>
+            <div class="connection-panel-subtitle">独立运行模式 - 请输入 ComfyUI 服务器地址</div>
+            <div class="connection-input-group">
+              <input type="text" id="server-url-input" placeholder="http://127.0.0.1:8188" value="${this.baseUrl}">
+              <button class="connection-btn" id="connect-btn">连接</button>
+            </div>
+            <div id="connection-status" class="connection-status ${this.connectionStatus}">${this.connectionStatus === 'connected' ? '已连接' : '未连接'}</div>
+            <div class="connection-help">
+              <p>请输入 ComfyUI 服务器的地址，例如：</p>
+              <p><code>http://127.0.0.1:8188</code> 或 <code>http://192.168.1.100:8188</code></p>
+              <p style="margin-top: 12px;">确保 ComfyUI 服务器已启动并允许跨域访问。</p>
+            </div>
+          </div>
+        </div>`;
+      }
+      
       panel.innerHTML = `
+        ${connectionPanelHTML}
         <div class="panel-content">
           <div class="panel-content-bg" id="panel-content-bg"></div>
           <div class="panel-preview" id="panel-preview">
@@ -1422,7 +1940,10 @@
                 <div class="form-group">
                   <label class="form-label">上传 API 工作流</label>
                   <input type="file" id="workflow-file" accept=".json" style="display:none">
-                  <button class="panel-btn panel-btn-secondary" id="upload-workflow-btn">📁 选择文件</button>
+                  <div style="display: flex; gap: 8px;">
+                    <button class="panel-btn panel-btn-secondary" id="upload-workflow-btn" style="flex: 1;">📁 选择文件</button>
+                    <button class="panel-btn panel-btn-warning" id="reboot-btn" title="重启 ComfyUI (需要安装 ComfyUI Manager)">🔄 重启</button>
+                  </div>
                 </div>
                 <div class="form-group">
                   <label class="form-label">服务器配置</label>
@@ -1512,6 +2033,7 @@
         statusDot: document.getElementById('status-dot'),
         workflowFile: document.getElementById('workflow-file'),
         uploadWorkflowBtn: document.getElementById('upload-workflow-btn'),
+        rebootBtn: document.getElementById('reboot-btn'),
         loadConfigBtn: document.getElementById('load-config-btn'),
         saveConfigBtn: document.getElementById('save-config-btn'),
         generateBtn: document.getElementById('generate-btn'),
@@ -1596,6 +2118,7 @@
 
       this.elements.uploadWorkflowBtn.onclick = () => this.elements.workflowFile.click();
       this.elements.workflowFile.onchange = (e) => this.loadUploadedWorkflow(e);
+      this.elements.rebootBtn.onclick = () => this.rebootComfyUI();
 
       this.elements.generateBtn.onclick = () => this.execute();
       this.elements.interruptBtn.onclick = () => this.interrupt();
@@ -1728,6 +2251,34 @@
 
       this.loadServerConfigList();
       this.startQueueCheck();
+      
+      // 独立模式：连接按钮事件（只在显式独立模式下绑定）
+      const isExplicitStandalone = window.COMFYUI_PANEL_STANDALONE === true;
+      if (isExplicitStandalone) {
+        const connectBtn = document.getElementById('connect-btn');
+        const urlInput = document.getElementById('server-url-input');
+        
+        if (connectBtn && urlInput) {
+          connectBtn.onclick = () => {
+            const url = urlInput.value.trim();
+            if (url) {
+              this.connectToServer(url);
+            } else {
+              this.showToast('请输入服务器地址');
+            }
+          };
+          
+          // 回车键触发连接
+          urlInput.onkeypress = (e) => {
+            if (e.key === 'Enter') {
+              const url = urlInput.value.trim();
+              if (url) {
+                this.connectToServer(url);
+              }
+            }
+          };
+        }
+      }
     }
 
     toggleMainSettings() {
@@ -1775,9 +2326,11 @@
         </svg>`;
       }
       
-      // 让按钮组保持展开状态，方便点击返回
+      // 只有当按钮在左侧按钮组内时，才让按钮组保持展开状态
+      // settingsMainBtn 在右侧工具栏，不应该触发左侧按钮组展开
+      const leftBtnGroupBtns = ['addCardBtn', 'galleryBtn'];
       const btnGroup = document.getElementById('left-btn-group');
-      if (btnGroup) {
+      if (btnGroup && leftBtnGroupBtns.includes(btnId)) {
         btnGroup.classList.add('expanded');
       }
     }
@@ -3863,36 +4416,49 @@
     }
 
     bindWebSocketEvents() {
+      // 检测是否是真正的独立模式（在独立HTML中运行）
+      // window.COMFYUI_PANEL_STANDALONE 是在独立HTML中设置的标志
+      const isExplicitStandalone = window.COMFYUI_PANEL_STANDALONE === true;
+      
+      // ComfyUI 嵌入模式：使用 app.api 的事件监听
+      // 注意：需要轮询等待 app 初始化完成
       const checkApp = () => {
+        // 如果明确是独立模式，不再轮询
+        if (isExplicitStandalone) {
+          console.log('[ComfyUI Panel] Explicit standalone mode, skip WebSocket events binding');
+          return;
+        }
+        
+        // 检查 app 是否已初始化
         if (typeof app !== 'undefined' && app.api) {
+          console.log('[ComfyUI Panel] App detected, binding WebSocket events');
+          
+          // 更新运行模式标志
+          this.isStandaloneMode = false;
+          this.isConnected = true;
+          this.connectionStatus = 'connected';
+          
           this.clientId = app.api.clientId;
 
           app.api.addEventListener('progress', (e) => { if (e.detail) this.updateProgress(e.detail.value, e.detail.max); });
 
           // progress_state 事件 - 每个步骤结束时发送
           app.api.addEventListener('progress_state', (e) => {
-            // console.log('[ComfyUI Panel] progress_state event:', e.detail);
             // 步骤结束，开始播放帧动画
             if (this.isVideoGeneration && this.previewFrames.length > 1) {
-              // console.log('[ComfyUI Panel] Step complete, starting frame animation, frames:', this.previewFrames.length);
               this.startFrameAnimation();
             }
           });
 
           app.api.addEventListener('executing', (e) => {
-            // console.log('[ComfyUI Panel] executing event:', e.detail);
             if (e.detail === null || e.detail?.node === null) {
-              // console.log('[ComfyUI Panel] Workflow completed (executing=null)');
               this.onExecutionComplete();
-              // 执行完成后检查队列状态
               this.checkQueueStatus();
             }
           });
 
           app.api.addEventListener('execution_complete', (e) => {
-            // console.log('[ComfyUI Panel] execution_complete event:', e.detail);
             this.onExecutionComplete();
-            // 执行完成后检查队列状态
             this.checkQueueStatus();
           });
 
@@ -3902,6 +4468,17 @@
             const promptId = e.detail.prompt_id;
             const nodeId = e.detail.node;
             const output = e.detail.output;
+
+            // 详细日志：输出完整的 output 结构
+            // console.log('[ComfyUI Panel] executed event:', {
+            //   prompt_id: promptId,
+            //   node: nodeId,
+            //   output: output,
+            //   outputNodeIds: Array.from(this.outputNodeIds),
+            //   isCurrentPrompt: this.currentPromptId === promptId
+            // });
+
+
 
             // 详细日志：输出完整的 output 结构
             // console.log('[ComfyUI Panel] executed event:', {
@@ -4289,10 +4866,37 @@
     }
 
     show() {
-      if (typeof app !== 'undefined' && app.api && app.api.api_base) {
-        this.baseUrl = app.api.api_base.replace(/\/+$/, '');
-        // console.log('[ComfyUI Panel] baseUrl:', this.baseUrl);
+      // 重新检测运行环境（因为 app 可能是异步初始化的）
+      const isExplicitStandalone = window.COMFYUI_PANEL_STANDALONE === true;
+      const appAvailable = typeof app !== 'undefined' && app.api;
+      
+      // 更新运行模式标志（只有在非显式独立模式下才更新）
+      if (!isExplicitStandalone && appAvailable) {
+        this.isStandaloneMode = false;
+        this.isConnected = true;
+        this.connectionStatus = 'connected';
+      } else if (isExplicitStandalone) {
+        // 显式独立模式，确保标志正确
+        this.isStandaloneMode = true;
       }
+      
+      // ComfyUI 嵌入模式：更新 baseUrl
+      if (!this.isStandaloneMode && appAvailable && app.api.api_base) {
+        this.baseUrl = app.api.api_base.replace(/\/+$/, '');
+      }
+      
+      // 独立模式：检查是否已连接（使用显式标志）
+      if (isExplicitStandalone || this.isStandaloneMode) {
+        const connectionPanel = document.getElementById('connection-panel');
+        if (!this.isConnected && connectionPanel) {
+          // 未连接时显示连接面板
+          connectionPanel.classList.add('visible');
+        } else if (connectionPanel) {
+          // 已连接时隐藏连接面板
+          connectionPanel.classList.remove('visible');
+        }
+      }
+      
       this.panel.classList.add('visible');
       this.openBtn.style.display = 'none';
       this.panelVisible = true;
@@ -5389,7 +5993,23 @@
         targetHeight
       );
 
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+      let blob;
+      try {
+        blob = await new Promise((resolve, reject) => {
+          canvas.toBlob((b) => {
+            if (b) resolve(b);
+            else reject(new Error('Failed to create blob'));
+          }, 'image/png');
+        });
+      } catch (e) {
+        // 跨域错误：canvas 被污染
+        console.warn('[ComfyUI Panel] Canvas tainted, skipping crop upload:', e.message);
+        // 清除脏标记，使用原始图片
+        cropInfo.needsUpload = false;
+        this.showToast('跨域限制：无法裁剪远程图片，使用原图');
+        return;
+      }
+      
       const filename = `panel_crop_node_${cropInfo.nodeId}.png`;
 
       // 检查是否启用本地输出
@@ -5470,7 +6090,7 @@
 
         pathGroup.querySelector('input').value = filename;
 
-        const img = new Image();
+        const img = this.createImageElement();
         img.onload = () => handleImageLoad(img, filename);
         img.onerror = () => {
           container.innerHTML = `<div class="image-placeholder">加载失败: ${filename}</div>`;
@@ -5626,7 +6246,7 @@
         const path = pathGroup.querySelector('input').value.trim();
         if (!path) return;
         this.cardValues[key] = path;
-        const img = new Image();
+        const img = this.createImageElement();
         img.onload = () => {
           handleImageLoad(img, path);
         };
@@ -5639,7 +6259,7 @@
 
       const savedFilename = this.cardValues[key];
       if (savedFilename) {
-        const img = new Image();
+        const img = this.createImageElement();
         img.onload = () => handleImageLoad(img, savedFilename);
         img.onerror = () => {
           container.innerHTML = `<div class="image-placeholder">✓ ${savedFilename}</div>`;
@@ -5647,7 +6267,7 @@
         };
         img.src = this.baseUrl + `/view?filename=${encodeURIComponent(savedFilename)}&type=input`;
       } else if (input.value) {
-        const img = new Image();
+        const img = this.createImageElement();
         img.onload = () => handleImageLoad(img, input.value);
         img.onerror = () => {
           container.innerHTML = `<div class="image-placeholder">✓ ${input.value}</div>`;
@@ -5696,7 +6316,7 @@
           }
         },
         restore: (filename, cropParams) => {
-          const img = new Image();
+          const img = this.createImageElement();
           img.onload = () => {
             handleImageLoad(img, filename);
             if (cropParams && cropParams.cropX !== undefined) {
@@ -6171,6 +6791,48 @@
       }
     }
 
+    // 重启 ComfyUI (需要安装 ComfyUI Manager 或 EasyUse)
+    async rebootComfyUI() {
+      if (!confirm('确定要重启 ComfyUI 吗？')) {
+        return;
+      }
+      
+      try {
+        this.showToast('正在重启 ComfyUI...');
+        
+        // 尝试 EasyUse 的重启 API
+        let response = await fetch(this.baseUrl + '/easyuse/reboot', {
+          method: 'GET'
+        });
+        
+        // 如果 EasyUse API 失败，尝试 ComfyUI Manager 的 API
+        if (!response.ok) {
+          response = await fetch(this.baseUrl + '/manager/reboot', {
+            method: 'POST'
+          });
+        }
+        
+        if (response.ok) {
+          this.showToast('ComfyUI 正在重启，请稍后刷新页面...');
+          // 关闭 WebSocket 连接
+          if (this.socket) {
+            this.socket.close();
+            this.socket = null;
+          }
+          // 更新连接状态
+          this.isConnected = false;
+          this.connectionStatus = 'disconnected';
+          this.updateConnectionUI();
+        } else {
+          console.error('[ComfyUI Panel] Reboot failed:', response.status);
+          this.showToast('重启失败：请确保已安装 EasyUse 或 ComfyUI Manager');
+        }
+      } catch (e) {
+        console.error('[ComfyUI Panel] Reboot failed:', e);
+        this.showToast('重启失败：' + e.message);
+      }
+    }
+
     updateProgress(current, total) {
       this.lastProgress = { current, total };
       const percentage = total > 0 ? (current / total) * 100 : 0;
@@ -6419,8 +7081,12 @@
         const result = await response.json();
         if (result.success) {
           this.showToast(`配置已保存到服务器: ${result.filename}`);
-          this.loadServerConfigList();
+          // 刷新配置列表
+          await this.loadServerConfigList();
+          // 选定保存的配置
           select.value = result.filename;
+          // 保存为上次使用的配置
+          this.saveLastUsedConfig(result.filename);
         } else {
           alert('保存到服务器失败: ' + result.error);
         }
@@ -6428,6 +7094,36 @@
         console.error('[ComfyUI Panel] Save to server failed:', e);
         alert('保存到服务器失败: ' + e.message);
       }
+    }
+
+    // 保存上次使用的配置文件名
+    async saveLastUsedConfig(filename) {
+      try {
+        await fetch(this.baseUrl + '/comfyui_panel/save_config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: '.last_used_config.json',
+            config: { lastUsedConfig: filename, timestamp: Date.now() }
+          })
+        });
+      } catch (e) {
+        console.error('[ComfyUI Panel] Save last used config failed:', e);
+      }
+    }
+
+    // 加载上次使用的配置文件名
+    async loadLastUsedConfig() {
+      try {
+        const response = await fetch(this.baseUrl + '/comfyui_panel/load_config?name=.last_used_config.json');
+        const data = await response.json();
+        if (data.success && data.config && data.config.lastUsedConfig) {
+          return data.config.lastUsedConfig;
+        }
+      } catch (e) {
+        // 文件不存在或其他错误，忽略
+      }
+      return null;
     }
 
     async loadServerConfigList() {
@@ -6438,9 +7134,12 @@
           const select = this.elements.serverConfigSelect;
           select.innerHTML = '<option value="">-- 选择配置 --</option>';
           
-          // 排除提示词库配置文件
+          // 排除提示词库配置文件和隐藏文件
           const promptLibraryFilename = this.getPromptLibraryFilename();
-          const filteredFiles = data.files.filter(file => file.name !== promptLibraryFilename);
+          const filteredFiles = data.files.filter(file => 
+            file.name !== promptLibraryFilename && 
+            !file.name.startsWith('.')
+          );
           
           // 按修改时间排序（最新的在前）
           filteredFiles.sort((a, b) => {
@@ -6465,29 +7164,50 @@
       return [];
     }
 
-    // 自动加载最后修改的配置文件
+    // 自动加载上次使用的配置文件
     async autoLoadLastConfig() {
       try {
+        // 先加载配置列表
         const files = await this.loadServerConfigList();
-        if (files && files.length > 0) {
-          const lastFile = files[0]; // 已按修改时间排序，第一个是最新的
-          console.log('[ComfyUI Panel] Auto loading last modified config:', lastFile.name);
-          
-          const response = await fetch(this.baseUrl + '/comfyui_panel/load_config?name=' + encodeURIComponent(lastFile.name));
-          const data = await response.json();
-          if (data.success) {
-            this.elements.serverConfigSelect.value = lastFile.name;
-            this.applyConfig(data.config);
-            this.showToast(`已自动加载: ${lastFile.name}`);
+        if (!files || files.length === 0) {
+          // 没有配置文件，加载提示词库后返回
+          this.loadPromptLibraryConfig();
+          return;
+        }
+
+        // 尝试加载上次使用的配置
+        const lastUsedFilename = await this.loadLastUsedConfig();
+        let configToLoad = null;
+
+        if (lastUsedFilename) {
+          // 检查上次使用的配置是否还在列表中
+          const exists = files.some(f => f.name === lastUsedFilename);
+          if (exists) {
+            configToLoad = lastUsedFilename;
           }
         }
-        // 无论是否加载了配置，都加载提示词库
-        this.loadPromptLibraryConfig();
+
+        // 如果没有上次使用的配置，使用最新修改的配置
+        if (!configToLoad) {
+          configToLoad = files[0].name;
+        }
+
+        console.log('[ComfyUI Panel] Auto loading config:', configToLoad);
+
+        const response = await fetch(this.baseUrl + '/comfyui_panel/load_config?name=' + encodeURIComponent(configToLoad));
+        const data = await response.json();
+        if (data.success) {
+          this.elements.serverConfigSelect.value = configToLoad;
+          this.applyConfig(data.config);
+          this.showToast(`已自动加载: ${configToLoad}`);
+          // 更新上次使用的配置记录
+          this.saveLastUsedConfig(configToLoad);
+        }
       } catch (e) {
         console.error('[ComfyUI Panel] Auto load last config failed:', e);
-        // 即使失败也尝试加载提示词库
-        this.loadPromptLibraryConfig();
       }
+      // 无论是否加载了配置，都加载提示词库
+      this.loadPromptLibraryConfig();
     }
 
     async loadServerConfig() {
@@ -6504,6 +7224,8 @@
         if (data.success) {
           this.applyConfig(data.config);
           this.showToast(`已加载配置: ${filename}`);
+          // 保存为上次使用的配置
+          this.saveLastUsedConfig(filename);
           // 同时加载提示词库配置
           this.loadPromptLibraryConfig();
         } else {
