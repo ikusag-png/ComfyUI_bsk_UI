@@ -7,7 +7,7 @@
   </a>
 </h2>
 
-🌟 简介 | Introduction
+**🌟 简介 | Introduction**
 ComfyUI_bsk_UI 是一个为 ComfyUI 打造的现代化、用户友好的交互界面。
 它彻底改变了 ComfyUI 原生前端繁琐的操作方式，让你能够更高效、更舒适地进行 AI 绘画工作流编排。
 
@@ -32,7 +32,7 @@ Create your AI art workflows more efficiently and comfortably!
 
 🔧 **灵活配置** - 支持加载 API 工作流，自由定制你的创作环境
 
-📦 安装方法 | Installation
+📦 **安装方法 | Installation**
 克隆本仓库到 ComfyUI 的 custom_nodes 目录：
 
 bash
@@ -41,6 +41,7 @@ bash
 cd /path/to/ComfyUI/custom_nodes
 git clone https://github.com/ikusag-png/ComfyUI_bsk_UI.git
 ```
+
 为确保生成过程预览生效,需要下载下面两个文件放到/ComfyUI/models/vae_approx
 
 [taew2_1.safetensors](https://www.modelscope.cn/models/Kijai/WanVideo_comfy/resolve/master/taew2_1.safetensors)
@@ -52,7 +53,7 @@ git clone https://github.com/ikusag-png/ComfyUI_bsk_UI.git
 
 点击设置按钮，加载你用comfyui导出的 API 工作流的json文件，开始探索！
 
-🚀 使用指南 | Usage Guide
+🚀 **使用指南 | Usage Guide**
 详细的使用教程和技巧分享，欢迎关注我的 B站空间：
 
 👉 Bilibili:  [@灰暗x](https://space.bilibili.com/26779709)
@@ -70,7 +71,11 @@ ComfyUI 确实是一个非常强大的工具，但它的原生交互体验实在
 
 有了它你可以节约大量体力获得更好的使用体验. 所有操作都是能不动就不动,能按一个键绝不按第二个.
 
-📄 开源协议 | License
+**更新日志:**
+260313: 修复了提示词编辑框文本错位的问题, 一些增强使用体验的小改进,
+        增加了独立模式,打开comfyui_panel.html可以连接安装了这个插件的comfyui, 体验秒开前端的感觉.
+
+📄 **开源协议 | License**
 Copyright © 2026 [@灰暗x](https://space.bilibili.com/26779709)
 
 本项目采用 GNU Affero General Public License v3.0 (AGPLv3) 协议开源。
