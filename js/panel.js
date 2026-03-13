@@ -572,7 +572,7 @@
           left: 0;
           right: 0;
           bottom: 0;
-          background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+          background: linear-gradient(163deg, #b0b0b9 0%, #89a1b1 50%, #919191 100%);
           z-index: 10001;
           flex-direction: column;
           align-items: center;

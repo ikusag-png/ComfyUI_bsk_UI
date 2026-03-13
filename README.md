@@ -32,6 +32,8 @@ Create your AI art workflows more efficiently and comfortably!
 
 🔧 **灵活配置** - 支持加载 API 工作流，自由定制你的创作环境
 
+✨ **独立模式** - 打开comfyui_panel.html能脱离comfyui前端单独运行.
+
 📦 **安装方法 | Installation**
 克隆本仓库到 ComfyUI 的 custom_nodes 目录：
 
@@ -71,9 +73,12 @@ ComfyUI 确实是一个非常强大的工具，但它的原生交互体验实在
 
 有了它你可以节约大量体力获得更好的使用体验. 所有操作都是能不动就不动,能按一个键绝不按第二个.
 
+
 **更新日志:**
+
 260313: 修复了提示词编辑框文本错位的问题, 一些增强使用体验的小改进,
         增加了独立模式,打开comfyui_panel.html可以连接安装了这个插件的comfyui, 体验秒开前端的感觉.
+
 
 📄 **开源协议 | License**
 Copyright © 2026 [@灰暗x](https://space.bilibili.com/26779709)
