@@ -1629,17 +1629,17 @@
         .form-select { width: 100%; padding: 6px 8px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 4px; color: white; font-size: 13px; cursor: pointer; }
         .form-select option { background: #f5f5f5; color: #333; }
 
-        .image-upload-container { position: relative; border: 2px dashed rgba(255, 255, 255, 0.15); border-radius: 6px; overflow: hidden; min-height: 60px; transition: border-color 0.2s, background 0.2s; }
+        .image-upload-container { position: relative; border: 2px dashed rgba(255, 255, 255, 0.15); border-radius: 6px; overflow: hidden; min-height: 60px; max-height: 800px; display: flex; justify-content: center; align-items: flex-start; transition: border-color 0.2s, background 0.2s; }
         .image-upload-container:hover { border-color: rgba(102, 126, 234, 0.5); }
         .image-upload-container.has-image { border-style: solid; border-color: rgba(102, 126, 234, 0.3); }
         .image-upload-container.drag-over { border-color: rgba(102, 126, 234, 0.8); background: rgba(102, 126, 234, 0.15); box-shadow: 0 0 10px rgba(102, 126, 234, 0.3); }
 
-        .image-preview-wrapper { position: relative; width: 100%; }
-        .image-preview-wrapper img { width: 100%; display: block; }
+        .image-preview-wrapper { position: relative; display: inline-block; vertical-align: top; max-width: 100%; max-height: 800px; }
+        .image-preview-wrapper img { display: block; max-width: 100%; max-height: 800px; object-fit: contain; }
         .image-placeholder { padding: 16px; text-align: center; color: rgba(255, 255, 255, 0.4); font-size: 12px; }
 
-        .crop-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; }
-        .crop-box { position: absolute; border: 2px solid #667eea; background: rgba(102, 126, 234, 0.0); cursor: move; pointer-events: auto; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); }
+        .crop-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; }
+        .crop-box { position: absolute; border: 2px solid #667eea; background: rgba(102, 126, 234, 0.0); cursor: move; pointer-events: auto; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); box-sizing: border-box; }
         .crop-box::before { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; border: 1px dashed rgba(255, 255, 255, 0.5); }
         .crop-resize-handle { position: absolute; width: 10px; height: 10px; background: #667eea; border: 1px solid white; border-radius: 1px; }
         .crop-resize-handle.nw { top: -5px; left: -5px; cursor: nw-resize; }
@@ -1661,7 +1661,7 @@
         
         .resolution-preset { display: flex; gap: 4px; margin-top: 6px; align-items: center; }
         .resolution-preset select { padding: 4px 6px; font-size: 12px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 4px; color: white; min-width: 80px; }
-        .resolution-preset select option { background: #2a2a3e; color: white; }
+        .resolution-preset select option { background: #c5c5c5; color: white; }
 
         .path-input-group { display: flex; gap: 4px; margin-top: 6px; flex: 1; }
         .path-input-group input { flex: 1; }
@@ -6182,7 +6182,7 @@
           document.querySelectorAll('.crop-settings .crop-width').forEach(el => el.value = w);
           document.querySelectorAll('.crop-settings .crop-height').forEach(el => el.value = h);
         }
-        if (currentImageData && cropBox) this.updateCropBox(cropBox, currentImageData, w, h);
+        if (currentImageData && cropBox && currentImageData.imgEl) this.updateCropBox(cropBox, currentImageData.imgEl, currentImageData, w, h);
         // 尺寸变化触发脏标记
         if (currentImageData) {
           self.markCropDirtyAndScheduleUpload(key);
@@ -6223,10 +6223,10 @@
       };
 
       const maximizeCrop = () => {
-        if (!currentImageData || !cropBox) return;
+        if (!currentImageData || !cropBox || !currentImageData.imgEl) return;
         const w = parseInt(cropSettings.querySelector('.crop-width').value) || 896;
         const h = parseInt(cropSettings.querySelector('.crop-height').value) || 1536;
-        this.maximizeCropBox(cropBox, currentImageData, w, h);
+        this.maximizeCropBox(cropBox, currentImageData.imgEl, currentImageData, w, h);
         // 最大化后触发脏标记
         self.markCropDirtyAndScheduleUpload(key);
       };
@@ -6247,7 +6247,11 @@
           cropX: 0,
           cropY: 0,
           cropW: img.width,
-          cropH: img.height
+          cropH: img.height,
+          displayWidth: 0,
+          displayHeight: 0,
+          scale: 1,
+          imgEl: null
         };
         container.innerHTML = '';
         container.classList.add('has-image');
@@ -6273,9 +6277,75 @@
         cropOverlay.appendChild(cropBox);
         previewWrapper.appendChild(cropOverlay);
         container.appendChild(previewWrapper);
-        this.initCropBox(cropBox, img, cropW, cropH, currentImageData);
-        this.maximizeCropBox(cropBox, currentImageData, cropW, cropH);
-        this.bindCropDrag(cropBox, imgEl, cropSettings, currentImageData, key); // 传入 key
+
+        // 存储 imgEl 引用
+        currentImageData.imgEl = imgEl;
+
+        // 等待图片渲染完成后获取实际显示尺寸
+        requestAnimationFrame(() => {
+          const rect = imgEl.getBoundingClientRect();
+          currentImageData.displayWidth = rect.width;
+          currentImageData.displayHeight = rect.height;
+          currentImageData.scale = rect.width / img.width;
+          this.initCropBox(cropBox, imgEl, cropW, cropH, currentImageData);
+          this.maximizeCropBox(cropBox, imgEl, currentImageData, cropW, cropH);
+          this.bindCropDrag(cropBox, imgEl, cropSettings, currentImageData, key); // 传入 key
+        });
+
+        // 监听图片尺寸变化，自动调整裁剪框
+        const resizeObserver = new ResizeObserver((entries) => {
+          if (!currentImageData || !cropBox) return;
+          const entry = entries[0];
+          if (!entry) return;
+          
+          const newDisplayW = entry.contentRect.width;
+          const newDisplayH = entry.contentRect.height;
+          
+          // 如果尺寸没有变化，跳过
+          if (Math.abs(newDisplayW - currentImageData.displayWidth) < 1 && 
+              Math.abs(newDisplayH - currentImageData.displayHeight) < 1) return;
+          
+          // 计算当前裁剪框在原图中的比例位置
+          const ratioX = currentImageData.cropX / currentImageData.width;
+          const ratioY = currentImageData.cropY / currentImageData.height;
+          const ratioW = currentImageData.cropW / currentImageData.width;
+          const ratioH = currentImageData.cropH / currentImageData.height;
+          
+          // 更新显示尺寸
+          currentImageData.displayWidth = newDisplayW;
+          currentImageData.displayHeight = newDisplayH;
+          currentImageData.scale = newDisplayW / currentImageData.width;
+          
+          // 按比例重新计算裁剪框位置和大小
+          let newCropX = ratioX * currentImageData.width;
+          let newCropY = ratioY * currentImageData.height;
+          let newCropW = ratioW * currentImageData.width;
+          let newCropH = ratioH * currentImageData.height;
+          
+          // 边界检查：确保裁剪框不超出图片范围
+          newCropW = Math.min(newCropW, currentImageData.width);
+          newCropH = Math.min(newCropH, currentImageData.height);
+          newCropX = Math.max(0, Math.min(newCropX, currentImageData.width - newCropW));
+          newCropY = Math.max(0, Math.min(newCropY, currentImageData.height - newCropH));
+          
+          // 更新裁剪数据
+          currentImageData.cropX = newCropX;
+          currentImageData.cropY = newCropY;
+          currentImageData.cropW = newCropW;
+          currentImageData.cropH = newCropH;
+          
+          // 更新裁剪框显示
+          cropBox.style.left = (newCropX * currentImageData.scale) + 'px';
+          cropBox.style.top = (newCropY * currentImageData.scale) + 'px';
+          cropBox.style.width = (newCropW * currentImageData.scale) + 'px';
+          cropBox.style.height = (newCropH * currentImageData.scale) + 'px';
+          
+          // 更新裁剪信息显示
+          const cropInfo = cropBox.querySelector('.crop-info');
+          if (cropInfo) cropInfo.textContent = `${Math.round(newCropW)} × ${Math.round(newCropH)}`;
+        });
+        resizeObserver.observe(imgEl);
+
         // 图片加载并最大化后，认为裁剪已确定，标记为需要上传（立即触发防抖）
         self.cardValues[key] = filename;
         self.markCropDirtyAndScheduleUpload(key);
@@ -6514,49 +6584,64 @@
       }
     }
 
-    initCropBox(cropBox, img, cropW, cropH, data) {
-      const imgW = img.width, imgH = img.height, aspectRatio = cropW / cropH;
+    initCropBox(cropBox, imgEl, cropW, cropH, data) {
+      const displayW = data.displayWidth || imgEl.clientWidth;
+      const displayH = data.displayHeight || imgEl.clientHeight;
+      const scale = data.scale || (displayW / data.width);
+      const aspectRatio = cropW / cropH;
       let boxW, boxH;
-      if (imgW / imgH > aspectRatio) { boxH = imgH * 0.8; boxW = boxH * aspectRatio; }
-      else { boxW = imgW * 0.8; boxH = boxW / aspectRatio; }
-      const boxX = (imgW - boxW) / 2, boxY = (imgH - boxH) / 2;
-      cropBox.style.left = (boxX / imgW * 100) + '%';
-      cropBox.style.top = (boxY / imgH * 100) + '%';
-      cropBox.style.width = (boxW / imgW * 100) + '%';
-      cropBox.style.height = (boxH / imgH * 100) + '%';
-      data.cropX = boxX; data.cropY = boxY; data.cropW = boxW; data.cropH = boxH;
+      if (displayW / displayH > aspectRatio) { boxH = displayH * 0.8; boxW = boxH * aspectRatio; }
+      else { boxW = displayW * 0.8; boxH = boxW / aspectRatio; }
+      const boxX = (displayW - boxW) / 2, boxY = (displayH - boxH) / 2;
+      cropBox.style.left = boxX + 'px';
+      cropBox.style.top = boxY + 'px';
+      cropBox.style.width = boxW + 'px';
+      cropBox.style.height = boxH + 'px';
+      // 存储原始图片坐标
+      data.cropX = boxX / scale;
+      data.cropY = boxY / scale;
+      data.cropW = boxW / scale;
+      data.cropH = boxH / scale;
       const cropInfo = cropBox.querySelector('.crop-info');
-      if (cropInfo) cropInfo.textContent = `${Math.round(boxW)} × ${Math.round(boxH)}`;
+      if (cropInfo) cropInfo.textContent = `${Math.round(data.cropW)} × ${Math.round(data.cropH)}`;
     }
 
-    updateCropBox(cropBox, data, cropW, cropH) {
-      const imgW = data.width, imgH = data.height, aspectRatio = cropW / cropH;
+    updateCropBox(cropBox, imgEl, data, cropW, cropH) {
+      const displayW = data.displayWidth || imgEl.clientWidth;
+      const displayH = data.displayHeight || imgEl.clientHeight;
+      const scale = data.scale || (displayW / data.width);
+      const aspectRatio = cropW / cropH;
       const centerX = data.cropX + data.cropW / 2, centerY = data.cropY + data.cropH / 2;
       let boxW, boxH;
       if (data.cropW / data.cropH > aspectRatio) { boxH = data.cropH; boxW = boxH * aspectRatio; }
       else { boxW = data.cropW; boxH = boxW / aspectRatio; }
       let boxX = centerX - boxW / 2, boxY = centerY - boxH / 2;
-      boxX = Math.max(0, Math.min(boxX, imgW - boxW));
-      boxY = Math.max(0, Math.min(boxY, imgH - boxH));
-      cropBox.style.left = (boxX / imgW * 100) + '%';
-      cropBox.style.top = (boxY / imgH * 100) + '%';
-      cropBox.style.width = (boxW / imgW * 100) + '%';
-      cropBox.style.height = (boxH / imgH * 100) + '%';
+      boxX = Math.max(0, Math.min(boxX, data.width - boxW));
+      boxY = Math.max(0, Math.min(boxY, data.height - boxH));
+      // 转换为显示坐标
+      cropBox.style.left = (boxX * scale) + 'px';
+      cropBox.style.top = (boxY * scale) + 'px';
+      cropBox.style.width = (boxW * scale) + 'px';
+      cropBox.style.height = (boxH * scale) + 'px';
       data.cropX = boxX; data.cropY = boxY; data.cropW = boxW; data.cropH = boxH;
       const cropInfo = cropBox.querySelector('.crop-info');
       if (cropInfo) cropInfo.textContent = `${Math.round(boxW)} × ${Math.round(boxH)}`;
     }
 
-    maximizeCropBox(cropBox, data, cropW, cropH) {
-      const imgW = data.width, imgH = data.height, aspectRatio = cropW / cropH;
+    maximizeCropBox(cropBox, imgEl, data, cropW, cropH) {
+      const displayW = data.displayWidth || imgEl.clientWidth;
+      const displayH = data.displayHeight || imgEl.clientHeight;
+      const scale = data.scale || (displayW / data.width);
+      const aspectRatio = cropW / cropH;
       let boxW, boxH;
-      if (imgW / imgH > aspectRatio) { boxH = imgH; boxW = boxH * aspectRatio; }
-      else { boxW = imgW; boxH = boxW / aspectRatio; }
-      const boxX = (imgW - boxW) / 2, boxY = (imgH - boxH) / 2;
-      cropBox.style.left = (boxX / imgW * 100) + '%';
-      cropBox.style.top = (boxY / imgH * 100) + '%';
-      cropBox.style.width = (boxW / imgW * 100) + '%';
-      cropBox.style.height = (boxH / imgH * 100) + '%';
+      if (data.width / data.height > aspectRatio) { boxH = data.height; boxW = boxH * aspectRatio; }
+      else { boxW = data.width; boxH = boxW / aspectRatio; }
+      const boxX = (data.width - boxW) / 2, boxY = (data.height - boxH) / 2;
+      // 转换为显示坐标
+      cropBox.style.left = (boxX * scale) + 'px';
+      cropBox.style.top = (boxY * scale) + 'px';
+      cropBox.style.width = (boxW * scale) + 'px';
+      cropBox.style.height = (boxH * scale) + 'px';
       data.cropX = boxX; data.cropY = boxY; data.cropW = boxW; data.cropH = boxH;
       const cropInfo = cropBox.querySelector('.crop-info');
       if (cropInfo) cropInfo.textContent = `${Math.round(boxW)} × ${Math.round(boxH)}`;
@@ -6566,25 +6651,32 @@
     maximizeAllImageCards() {
       const cropW = this.globalCropSize.width;
       const cropH = this.globalCropSize.height;
-      
+
       // 遍历所有图像卡片数据
       Object.keys(this.imageCropData).forEach(key => {
         const cardData = this.imageCropData[key];
         if (!cardData) return;
-        
+
         const data = cardData.getData();
         const cropSettings = cardData.cropSettings;
         const container = cardData.container;
-        
+
         if (!data || !cropSettings || !container) return;
-        
-        // 获取裁剪框元素
+
+        // 获取裁剪框元素和图片元素
         const cropBox = container.querySelector('.crop-box');
-        if (!cropBox) return;
-        
+        const imgEl = container.querySelector('.image-preview-wrapper img');
+        if (!cropBox || !imgEl) return;
+
+        // 更新显示尺寸
+        const rect = imgEl.getBoundingClientRect();
+        data.displayWidth = rect.width;
+        data.displayHeight = rect.height;
+        data.scale = rect.width / data.width;
+
         // 执行最大化
-        this.maximizeCropBox(cropBox, data, cropW, cropH);
-        
+        this.maximizeCropBox(cropBox, imgEl, data, cropW, cropH);
+
         // 标记为需要上传
         this.markCropDirtyAndScheduleUpload(key);
       });
@@ -6598,15 +6690,16 @@
         if (!isDragging && !isResizing) return;
         const rect = imgEl.getBoundingClientRect();
         const dx = e.clientX - startX, dy = e.clientY - startY;
+        const scale = data.scale || (rect.width / data.width);
 
         if (isDragging) {
           let newLeft = startLeft + dx, newTop = startTop + dy;
           newLeft = Math.max(0, Math.min(newLeft, rect.width - startWidth));
           newTop = Math.max(0, Math.min(newTop, rect.height - startHeight));
-          cropBox.style.left = (newLeft / rect.width * 100) + '%';
-          cropBox.style.top = (newTop / rect.height * 100) + '%';
-          data.cropX = newLeft / rect.width * data.width;
-          data.cropY = newTop / rect.height * data.height;
+          cropBox.style.left = newLeft + 'px';
+          cropBox.style.top = newTop + 'px';
+          data.cropX = newLeft / scale;
+          data.cropY = newTop / scale;
         } else if (isResizing) {
           const cropW = parseInt(cropSettings.querySelector('.crop-width').value) || 896;
           const cropH = parseInt(cropSettings.querySelector('.crop-height').value) || 1536;
@@ -6624,14 +6717,14 @@
           if (newLeft + newWidth > rect.width) { newWidth = rect.width - newLeft; newHeight = newWidth / aspectRatio; }
           if (newTop + newHeight > rect.height) { newHeight = rect.height - newTop; newWidth = newHeight * aspectRatio; }
 
-          cropBox.style.left = (newLeft / rect.width * 100) + '%';
-          cropBox.style.top = (newTop / rect.height * 100) + '%';
-          cropBox.style.width = (newWidth / rect.width * 100) + '%';
-          cropBox.style.height = (newHeight / rect.height * 100) + '%';
-          data.cropX = newLeft / rect.width * data.width;
-          data.cropY = newTop / rect.height * data.height;
-          data.cropW = newWidth / rect.width * data.width;
-          data.cropH = newHeight / rect.height * data.height;
+          cropBox.style.left = newLeft + 'px';
+          cropBox.style.top = newTop + 'px';
+          cropBox.style.width = newWidth + 'px';
+          cropBox.style.height = newHeight + 'px';
+          data.cropX = newLeft / scale;
+          data.cropY = newTop / scale;
+          data.cropW = newWidth / scale;
+          data.cropH = newHeight / scale;
           const cropInfo = cropBox.querySelector('.crop-info');
           if (cropInfo) cropInfo.textContent = `${Math.round(data.cropW)} × ${Math.round(data.cropH)}`;
         }
@@ -6655,15 +6748,14 @@
         if (key) {
           this.startCropAdjust(key);
         }
-        
+
         if (e.target.classList.contains('crop-resize-handle')) { isResizing = true; resizeHandle = e.target.className.split(' ').find(c => ['nw', 'ne', 'sw', 'se'].includes(c)); }
         else { isDragging = true; }
         startX = e.clientX; startY = e.clientY;
-        const rect = imgEl.getBoundingClientRect();
-        startLeft = parseFloat(cropBox.style.left) / 100 * rect.width;
-        startTop = parseFloat(cropBox.style.top) / 100 * rect.height;
-        startWidth = parseFloat(cropBox.style.width) / 100 * rect.width;
-        startHeight = parseFloat(cropBox.style.height) / 100 * rect.height;
+        startLeft = parseFloat(cropBox.style.left) || 0;
+        startTop = parseFloat(cropBox.style.top) || 0;
+        startWidth = parseFloat(cropBox.style.width) || 100;
+        startHeight = parseFloat(cropBox.style.height) || 100;
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup', onUp);
         e.preventDefault();
