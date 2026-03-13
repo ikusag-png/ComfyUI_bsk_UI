@@ -43,7 +43,7 @@ offload_device = mm.unet_offload_device()
 
 VAE_STRIDE = (4, 8, 8)
 PATCH_SIZE = (1, 2, 2)
-
+MAX_RESOLUTION=16384
 
 
 EXTENSION_DIR = Path(__file__).parent
