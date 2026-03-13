@@ -776,8 +776,11 @@
                   background: #ffe7f4c4;
         }
         .prompt-preview-textarea {
-          width: 100%;
-          height: 100%;
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
           background: white;
           border: 1px solid rgba(0, 0, 0, 0.15);
           border-radius: 6px;
@@ -787,6 +790,7 @@
           padding: 12px;
           resize: none;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          box-sizing: border-box;
         }
         .prompt-preview-textarea:focus {
           outline: none;
@@ -821,6 +825,7 @@
           overflow: auto;
           pointer-events: none;
           color: #333;
+          box-sizing: border-box;
         }
         .prompt-highlight-pre .hl-seg {
           background: rgba(100, 150, 200, 0.15);
@@ -838,11 +843,16 @@
           color: #c04040;
         }
         .prompt-textarea-highlight {
-          position: relative;
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
           background: transparent !important;
           color: transparent !important;
           caret-color: #333;
           z-index: 2;
+          box-sizing: border-box;
         }
         .prompt-textarea-highlight::selection {
           background: rgba(102, 126, 234, 0.3);
