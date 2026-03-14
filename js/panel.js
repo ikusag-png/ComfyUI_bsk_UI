@@ -39,7 +39,7 @@
   function inferWidgetType(inputKey, value, classType) {
     const key = inputKey.toLowerCase();
     if (classType === 'PrimitiveInt' && key === 'value') return 'number';
-    if (classType === 'PrimitiveFloat' && key === 'value') return 'slider';
+    if (classType === 'PrimitiveFloat' && key === 'value') return 'number';
     if (key.includes('text') || key.includes('prompt')) return 'textarea';
     if (key === 'image') return 'image';
     if (key.includes('image') && !key.includes('output') && !key.includes('filename')) return 'image';
@@ -57,7 +57,7 @@
     }
     
     if (typeof value === 'number') {
-      if (key.includes('step') || key.includes('seed') || key.includes('cfg') || key.includes('denoise')) return 'slider';
+      // 所有数字类型都使用输入框，不再使用滑竿
       return 'number';
     }
     if (typeof value === 'boolean') return 'checkbox';
@@ -220,6 +220,76 @@
       // 提示词库相关
       this.promptLibrary = [];  // 提示词库列表 [{id, title, content}]
 
+      // 上游节点连接设置
+      this.inputLinkSettings = {};  // 存储用户配置的上游连接设置 { 'nodeId.inputKey': { enabled, linkNodeId, linkOutputIndex, defaultValue, defaultDataType } }
+      this.originalInputLinks = {};  // 存储原始工作流中的连接信息（用于重置）
+      
+      // 卡片级别的连接显示开关状态 { nodeId: showLinks }
+      this.cardLinkToggleState = {};
+      
+      // 输入项的默认值类型配置 { 'nodeId.inputKey': { hasDefaultValue, defaultValue, dataType } }
+      this.inputDefaultConfig = {};
+      
+      // 禁用连接时的替代值设置
+      this.inputDisabledValues = {};
+      
+      // 常用节点输入数据类型字典
+      // 格式: { 'class_type': { 'input_name': 'data_type' } }
+      // data_type: 'int' | 'float' | 'string' | 'boolean'
+      this.nodeTypeInputTypes = {
+        // KSampler 系列
+        'KSampler': { 'seed': 'int', 'steps': 'int', 'cfg': 'float', 'denoise': 'float' },
+        'KSampler (Efficient)': { 'seed': 'int', 'steps': 'int', 'cfg': 'float', 'denoise': 'float' },
+        'KSamplerAdvanced': { 'noise_seed': 'int', 'steps': 'int', 'cfg': 'float', 'start_at_step': 'int', 'end_at_step': 'int' },
+        
+        // ControlNet
+        'ControlNetApplyAdvanced': { 'strength': 'float', 'start_percent': 'float', 'end_percent': 'float' },
+        'ControlNetApply': { 'strength': 'float' },
+        
+        // Latent 操作
+        'LatentUpscale': { 'width': 'int', 'height': 'int', 'crop': 'string' },
+        'LatentUpscaleBy': { 'scale_by': 'float' },
+        'LatentCrop': { 'width': 'int', 'height': 'int', 'x': 'int', 'y': 'int' },
+        
+        // 图像操作
+        'ImageScale': { 'width': 'int', 'height': 'int', 'crop': 'string' },
+        'ImageScaleBy': { 'scale_by': 'float' },
+        'ImageUpscaleWithModel': { 'scale_by': 'float' },
+        
+        // LoRA
+        'LoraLoader': { 'strength_model': 'float', 'strength_clip': 'float' },
+        'LoraLoaderWithPath': { 'strength_model': 'float', 'strength_clip': 'float' },
+        
+        // 常量节点
+        'INTConstant': { 'value': 'int' },
+        'FloatConstant': { 'value': 'float' },
+        'StringConstant': { 'value': 'string' },
+        'BooleanConstant': { 'value': 'boolean' },
+        
+        // WD14 Tagger
+        'WD14Tagger|pysssss': { 'threshold': 'float', 'character_threshold': 'float', 'replace_underscore': 'boolean', 'trailing_comma': 'boolean', 'enabled': 'boolean' },
+        
+        // 其他常用
+        'CLIPTextEncode': { 'speak_and_recognation': 'boolean' },
+        'VAEDecode': {},
+        'VAEEncode': {},
+        'LoadImage': {},
+        'SaveImage': { 'filename_prefix': 'string' },
+        
+        // 数学运算
+        'SimpleMath+': {},
+        'MathExpression': { 'expression': 'string' },
+        
+        // 字符串处理
+        'StringProcessor': { 'match_whole_token': 'boolean' },
+        'StringRuleProcessor': {},
+        'PromptStringProcessor': {},
+        
+        // 预览
+        'PreviewAny': { 'previewMode': 'boolean' },
+        'PreviewImage': {},
+      };
+
       // 主题配置
       this.theme = {
         primaryGradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -260,10 +330,11 @@
         this.addTab('常用', 'main');
       }
 
-      // 独立模式：如果有保存的URL，尝试自动连接
-      if (this.isStandaloneMode && this.baseUrl) {
-        this.connectToServer(this.baseUrl);
-      }
+      // 独立模式：不自动连接，让用户手动输入地址连接
+      // 这样用户可以更换连接地址
+      // if (this.isStandaloneMode && this.baseUrl) {
+      //   this.connectToServer(this.baseUrl);
+      // }
 
       console.log('[ComfyUI Panel] Panel initialized');
     }
@@ -716,7 +787,71 @@
           border-radius: 4px;
           font-family: monospace;
         }
-        
+
+        .connection-links {
+          display: flex;
+          justify-content: center;
+          gap: 16px;
+          margin-top: 24px;
+          padding-top: 20px;
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .connection-link {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.1);
+          color: rgba(255, 255, 255, 0.7);
+          transition: all 0.2s ease;
+        }
+
+        .connection-link:hover {
+          background: rgba(255, 255, 255, 0.2);
+          color: white;
+          transform: translateY(-2px);
+        }
+
+        .connection-link .link-icon {
+          width: 22px;
+          height: 22px;
+        }
+
+        .settings-links {
+          display: flex;
+          justify-content: center;
+          gap: 12px;
+          margin-top: 16px;
+          padding-top: 16px;
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .settings-link {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.08);
+          color: rgba(255, 255, 255, 0.6);
+          transition: all 0.2s ease;
+        }
+
+        .settings-link:hover {
+          background: rgba(102, 126, 234, 0.3);
+          color: white;
+          transform: translateY(-2px);
+        }
+
+        .settings-link .link-icon {
+          width: 20px;
+          height: 20px;
+        }
+
         /* 工具栏连接状态指示器 */
         .toolbar-connection-status {
           display: flex;
@@ -910,11 +1045,34 @@
           align-items: center;
           justify-content: center;
         }
+        /* 全屏模式下的基础样式 - 高宽40px，但expanded时可以正确展开 */
+        .previous-result-thumb.fullscreen-mode {
+          width: 40px;
+          height: 40px;
+          border-radius: 6px;
+        }
+        .previous-result-thumb.fullscreen-mode.expanded {
+          width: auto;
+          height: auto;
+          border-radius: 8px;
+        }
         .previous-result-thumb .thumb-image {
           max-width: 100%;
           max-height: 100%;
           object-fit: contain;
           display: block;
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+        }
+        .previous-result-thumb.expanded .thumb-image {
+          position: absolute;
+          top: 0;
+          left: 0;
+          transform: none;
+          max-width: none;
+          max-height: none;
         }
         .previous-result-thumb .thumb-download-indicator {
           position: absolute;
@@ -942,7 +1100,7 @@
           background: rgba(34, 197, 94, 0.3);
         }
 
-        /* 上一个结果小图标模式（右侧面板隐藏时） */
+        /* 上一个结果小图标模式（右侧面板隐藏时） - 保留兼容性 */
         .previous-result-thumb.mini {
           width: 40px;
           height: 40px;
@@ -977,7 +1135,7 @@
           display: flex;
           align-items: center;
           justify-content: center;
-          background: rgba(0, 0, 0, 0.3);
+          background: rgba(60, 60, 60, 0.8);
           transition: all 0.2s ease;
         }
         .image-card-float-icon:hover {
@@ -993,8 +1151,8 @@
           position: absolute;
           bottom: 2px;
           right: 2px;
-          background: rgba(0, 0, 0, 0.7);
-          color: white;
+          background: rgba(0, 0, 0, 0.8);
+          color: #ffffff;
           font-size: 9px;
           padding: 1px 3px;
           border-radius: 2px;
@@ -1002,6 +1160,7 @@
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+          text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
         }
 
         /* 加载图像卡片浮动面板 - 展开模式 */
@@ -1110,7 +1269,7 @@
         .circular-progress .progress-text {
           position: absolute;
           top: 50%;
-          left: 25%;
+          left: 20%;
           transform: translate(-50%, -50%);
           color: white;
           font-size: 12px;
@@ -1785,7 +1944,7 @@
           align-items: center;
           gap: 4px;
           padding: 6px 8px;
-          background: white;
+          background: #f0f0f0e0;
           border-radius: 3px;
           border: 1px solid rgba(0, 0, 0, 0.08);
           transition: all 0.15s;
@@ -1845,7 +2004,7 @@
           align-items: center;
           gap: 4px;
           padding: 6px 8px;
-          background: white;
+          background: #f0f0f0e0;
           border-radius: 4px;
           border: 1px solid rgba(0, 0, 0, 0.1);
           transition: all 0.15s;
@@ -1922,8 +2081,336 @@
         .config-card.collapsed .config-card-body { display: none; }
         .config-card-body { padding: 10px 12px; }
 
+        /* 上游连接开关按钮样式 */
+        .toggle-links-btn {
+          opacity: 0.5;
+        }
+        .toggle-links-btn.has-links {
+          opacity: 1;
+          color: #667eea;
+        }
+        .toggle-links-btn.active {
+          background: rgba(102, 126, 234, 0.3);
+          color: #667eea;
+        }
+        
+        /* 卡片连接显示开关样式 */
+        .card-link-toggle-btn {
+          padding: 2px 6px;
+          font-size: 14px;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 4px;
+          color: rgba(255, 255, 255, 0.5);
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .card-link-toggle-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+        }
+        .card-link-toggle-btn.active {
+          background: rgba(102, 126, 234, 0.3);
+          border-color: rgba(102, 126, 234, 0.5);
+          color: #667eea;
+        }
+        .card-link-toggle-btn.has-links {
+          color: #fbbf24;
+        }
+        
+        /* 上游连接控件样式 */
+        .upstream-link-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 4px;
+          flex-wrap: nowrap;
+        }
+        .upstream-link-row .link-enable-btn {
+          padding: 2px 6px;
+          font-size: 14px;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 4px;
+          color: rgba(255, 255, 255, 0.5);
+          cursor: pointer;
+          transition: all 0.2s;
+          flex-shrink: 0;
+        }
+        .upstream-link-row .link-enable-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+        }
+        .upstream-link-row .link-enable-btn.enabled {
+          background: #ffffffa1;
+          border-color: #ffffff80;
+          color: #000000c9;
+        }
+        .upstream-link-row .link-name-label {
+          font-size: 13px;
+          color: rgb(20 94 233 / 76%);
+          font-weight: 500;
+          flex-shrink: 0;
+        }
+        .upstream-link-row .link-right-group {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-left: auto;
+          flex-shrink: 0;
+        }
+        .upstream-link-row .link-upstream-name {
+          font-size: 11px;
+          color: #060606d6;
+          min-width: 0;
+          max-width: 100px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .upstream-link-row .link-label {
+          font-size: 12px;
+          color: rgba(255, 255, 255, 0.5);
+        }
+        .upstream-link-row .link-id-input {
+          width: 60px;
+          padding: 4px 6px;
+          font-size: 12px;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 4px;
+          color: white;
+        }
+        .upstream-link-row .link-id-input:focus {
+          outline: none;
+          border-color: rgba(102, 126, 234, 0.6);
+        }
+        .upstream-link-row .link-out-input {
+          width: 40px;
+          padding: 4px 6px;
+          font-size: 12px;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 4px;
+          color: white;
+        }
+        .upstream-link-row .link-out-input:focus {
+          outline: none;
+          border-color: rgba(102, 126, 234, 0.6);
+        }
+        .upstream-link-row .link-reset-btn {
+          padding: 2px 6px;
+          font-size: 12px;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 4px;
+          color: rgba(255, 255, 255, 0.6);
+          cursor: pointer;
+        }
+        .upstream-link-row .link-reset-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+          color: white;
+        }
+        .upstream-link-row .link-value-container {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          margin-left: auto;
+        }
+        .upstream-link-row .link-value-input {
+          width: 80px;
+          padding: 4px 6px;
+          font-size: 12px;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 4px;
+          color: white;
+        }
+        .upstream-link-row .link-value-input:focus {
+          outline: none;
+          border-color: rgba(102, 126, 234, 0.6);
+        }
+        .upstream-link-row .link-value-btn {
+          padding: 4px 10px;
+          font-size: 12px;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 4px;
+          color: rgba(255, 255, 255, 0.7);
+          cursor: pointer;
+          min-width: 50px;
+          text-align: center;
+        }
+        .upstream-link-row .link-value-btn.true {
+          background: rgba(34, 197, 94, 0.3);
+          border-color: rgba(34, 197, 94, 0.5);
+          color: #4ade80;
+        }
+        .upstream-link-row .link-value-btn.false {
+          background: rgba(239, 68, 68, 0.3);
+          border-color: rgba(239, 68, 68, 0.5);
+          color: #f87171;
+        }
+        
+        /* 默认值输入行样式 - 用于显示工作流中的值 */
+        .default-value-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 4px;
+          flex-wrap: wrap;
+        }
+        .default-datatype-select {
+          padding: 3px 6px;
+          font-size: 12px;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 4px;
+          color: white;
+          min-width: 80px;
+        }
+        .default-datatype-select:focus {
+          outline: none;
+          border-color: rgba(102, 126, 234, 0.6);
+        }
+        .default-value-input {
+          flex: 1;
+          min-width: 100px;
+          padding: 4px 8px;
+          font-size: 13px;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 4px;
+          color: white;
+        }
+        .default-value-input:focus {
+          outline: none;
+          border-color: rgba(102, 126, 234, 0.6);
+        }
+        
+        /* 布尔开关按钮样式 */
+        .boolean-toggle-btn {
+          padding: 4px 12px;
+          font-size: 12px;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 4px;
+          color: rgba(255, 255, 255, 0.6);
+          cursor: pointer;
+          transition: all 0.2s;
+          min-width: 50px;
+        }
+        .boolean-toggle-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+        }
+        .boolean-toggle-btn.true {
+          background: rgba(34, 197, 94, 0.3);
+          border-color: rgba(34, 197, 94, 0.5);
+          color: #4ade80;
+        }
+        .boolean-toggle-btn.false {
+          background: rgba(239, 68, 68, 0.3);
+          border-color: rgba(239, 68, 68, 0.5);
+          color: #f87171;
+        }
+        
+        /* 卡片显示所有连接时的样式 */
+        .config-card.show-all-links .form-group .optional-link {
+          display: block !important;
+        }
+        .config-card:not(.show-all-links) .form-group:not(.has-link) .optional-link {
+          display: none;
+        }
+
+        /* 上游节点连接设置样式 - 新布局 */
+        .input-link-settings {
+          margin-top: 4px;
+          margin-bottom: 4px;
+        }
+        .input-link-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+        .link-toggle-btn {
+          padding: 2px 6px;
+          font-size: 14px;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 4px;
+          color: rgba(255, 255, 255, 0.5);
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .link-toggle-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+        }
+        .link-toggle-btn.enabled {
+          background: rgba(102, 126, 234, 0.3);
+          border-color: rgba(102, 126, 234, 0.5);
+          color: #667eea;
+        }
+        .link-node-id-input {
+          width: 50px;
+          padding: 3px 6px;
+          font-size: 12px;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 4px;
+          color: white;
+          text-align: center;
+        }
+        .link-node-id-input:focus {
+          outline: none;
+          border-color: rgba(102, 126, 234, 0.6);
+        }
+        .link-node-title {
+          font-size: 11px;
+          color: rgba(255, 255, 255, 0.6);
+          max-width: 120px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .link-output-index-input {
+          width: 40px;
+          padding: 3px 4px;
+          font-size: 12px;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 4px;
+          color: white;
+          text-align: center;
+        }
+        .link-output-index-input:focus {
+          outline: none;
+          border-color: rgba(102, 126, 234, 0.6);
+        }
+        .reset-link-btn {
+          padding: 3px 8px;
+          font-size: 12px;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 4px;
+          color: rgba(255, 255, 255, 0.7);
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .reset-link-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+          color: white;
+        }
+        
+        /* 有连接的form-group样式 */
+        .form-group.has-link .input-value-container {
+          display: none;
+        }
+
         .form-group { margin-bottom: 10px; }
         .form-group:last-child { margin-bottom: 0; }
+        .form-group.inline-layout { display: flex; align-items: center; gap: 8px; }
+        .form-group.inline-layout .form-label { margin-bottom: 0; flex-shrink: 0; }
+        .form-group.inline-layout .form-input { flex: 1; min-width: 0; }
+        .form-group.inline-layout .form-input[type="number"] { width: 100px; flex: none; }
         .form-label { display: block; color: ${this.theme.placeholderColor}; font-size: 13px; margin-bottom: 4px; text-transform: uppercase; font-weight: 500; }
         .form-input { width: 100%; padding: 8px 10px; background: #bbbbbb47; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 4px; color: black; font-size: 14px; box-sizing: border-box; }
         .form-input:focus { outline: none; border-color: rgba(102, 126, 234, 0.6); }
@@ -1993,11 +2480,6 @@
         .config-content::-webkit-scrollbar { width: 6px; }
         .config-content::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); }
         .config-content::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 3px; }
-
-        .form-slider-container { display: flex; align-items: center; gap: 8px; }
-        .form-slider { flex: 1; -webkit-appearance: none; height: 4px; background: rgba(255, 255, 255, 0.15); border-radius: 2px; cursor: pointer; }
-        .form-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #667eea; border-radius: 50%; cursor: pointer; }
-        .form-slider-value { min-width: 40px; text-align: center; color: white; font-size: 12px; font-family: monospace; background: rgba(255, 255, 255, 0.1); padding: 4px 6px; border-radius: 3px; }
 
         .form-select { width: 100%; padding: 6px 8px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 4px; color: white; font-size: 13px; cursor: pointer; }
         .form-select option { background: #f5f5f5; color: #333; }
@@ -2098,7 +2580,7 @@
         <!-- 连接面板 - 独立模式 -->
         <div id="connection-panel" class="${this.isConnected ? '' : 'visible'}">
           <div class="connection-panel-content">
-            <div class="connection-panel-title">ComfyUI Panel</div>
+            <div class="connection-panel-title">ComfyUI_bsk_UI</div>
             <div class="connection-panel-subtitle">独立运行模式 - 请输入 ComfyUI 服务器地址</div>
             <div class="connection-input-group">
               <input type="text" id="server-url-input" placeholder="http://127.0.0.1:8188" value="${this.baseUrl}">
@@ -2109,6 +2591,14 @@
               <p>请输入 ComfyUI 服务器的地址，例如：</p>
               <p><code>http://127.0.0.1:8188</code> 或 <code>http://192.168.1.100:8188</code></p>
               <p style="margin-top: 12px;">确保 ComfyUI 服务器已启动并允许跨域访问。</p>
+            </div>
+            <div class="connection-links">
+              <a href="https://github.com/ikusag-png/ComfyUI_bsk_UI/" target="_blank" class="connection-link" title="GitHub">
+                <svg class="link-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+              </a>
+              <a href="https://space.bilibili.com/26779709" target="_blank" class="connection-link" title="Bilibili">
+                <svg class="link-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.858 0 17.347v-7.36c.036-1.511.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.234 1.234 0 0 1-.373-.906c0-.356.124-.658.373-.907l.027-.027c.267-.249.573-.373.92-.373.347 0 .653.124.92.373L9.653 4.44c.071.071.134.142.187.213h4.267a.836.836 0 0 1 .16-.213l2.853-2.747c.267-.249.573-.373.92-.373.347 0 .662.151.929.4.267.249.391.551.391.907 0 .355-.124.657-.373.906zM5.333 7.24c-.746.018-1.373.276-1.88.773-.506.498-.769 1.13-.786 1.894v7.52c.017.764.28 1.395.786 1.893.507.498 1.134.756 1.88.773h13.334c.746-.017 1.373-.275 1.88-.773.506-.498.769-1.129.786-1.893v-7.52c-.017-.765-.28-1.396-.786-1.894-.507-.497-1.134-.755-1.88-.773zM8 11.107c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c0-.373.129-.689.386-.947.258-.257.574-.386.947-.386zm8 0c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373z"/></svg>
+              </a>
             </div>
           </div>
         </div>`;
@@ -2379,7 +2869,7 @@
                 
                 <div class="shortcuts-section">
                   <label class="form-label">快捷键说明</label>
-                  <div class="shortcuts-list" style="font-size: 12px; color: rgba(255,255,255,0.8); line-height: 1.8;">
+                  <div class="shortcuts-list" style="font-size: 18px; color: rgba(255,255,255,0.8); line-height: 1.8;">
                     <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
                       <span><strong style="color: #6ee7b7;">G</strong> 生成</span>
                       <span><strong style="color: #6ee7b7;">F</strong> 下载当前图片</span>
@@ -2411,6 +2901,15 @@
                       <span>提示词高亮：<span style="color: #2d8a4e;">深绿色</span>=注释，<span style="color: #c9444d;">深红色</span>=有权重</span>
                     </div>
                   </div>
+                </div>
+
+                <div class="settings-links">
+                  <a href="https://github.com/ikusag-png/ComfyUI_bsk_UI/" target="_blank" class="settings-link" title="GitHub">
+                    <svg class="link-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                  </a>
+                  <a href="https://space.bilibili.com/26779709" target="_blank" class="settings-link" title="Bilibili">
+                    <svg class="link-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.858 0 17.347v-7.36c.036-1.511.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.234 1.234 0 0 1-.373-.906c0-.356.124-.658.373-.907l.027-.027c.267-.249.573-.373.92-.373.347 0 .653.124.92.373L9.653 4.44c.071.071.134.142.187.213h4.267a.836.836 0 0 1 .16-.213l2.853-2.747c.267-.249.573-.373.92-.373.347 0 .662.151.929.4.267.249.391.551.391.907 0 .355-.124.657-.373.906zM5.333 7.24c-.746.018-1.373.276-1.88.773-.506.498-.769 1.13-.786 1.894v7.52c.017.764.28 1.395.786 1.893.507.498 1.134.756 1.88.773h13.334c.746-.017 1.373-.275 1.88-.773.506-.498.769-1.129.786-1.893v-7.52c-.017-.765-.28-1.396-.786-1.894-.507-.497-1.134-.755-1.88-.773zM8 11.107c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c0-.373.129-.689.386-.947.258-.257.574-.386.947-.386zm8 0c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373z"/></svg>
+                  </a>
                 </div>
               </div>
             </div>
@@ -2673,11 +3172,9 @@
         // 延迟展开
         this.thumbHoverTimeout = setTimeout(() => {
           this.elements.previousResultThumb.classList.add('expanded');
-          // 重置缩放和平移
+          // 重置缩放和平移，让图片居中显示
           this.thumbZoom = 1;
-          this.thumbPanX = 0;
-          this.thumbPanY = 0;
-          this.updateThumbTransform();
+          this.centerThumbImage();
         }, 150);
       });
 
@@ -3534,49 +4031,55 @@
       this.elements.promptOverwriteBtn.style.display = 'none';
     }
 
-    // 刷新多行文本卡片下拉列表 - 从已加载的配置面板中获取
+    // 刷新多行文本卡片下拉列表 - 从所有标签页中获取（去重）
     refreshPromptCardSelect() {
       const select = this.elements.promptCardSelect;
       select.innerHTML = '<option value="">选择卡片...</option>';
 
-      // 创建节点ID到节点的映射
-      const nodeMap = new Map(this.parsedNodes.map(n => [n.id, n]));
+      // 使用getTextareaCards获取所有标签页中的卡片
+      const textareaCards = this.getTextareaCards();
 
-      // 只遍历已加载的卡片（activeCards）
-      for (const nodeId of this.activeCards) {
-        const node = nodeMap.get(nodeId);
-        if (!node) continue;
-
-        for (const input of node.inputs) {
-          if (input.widgetType === 'textarea') {
-            const option = document.createElement('option');
-            option.value = `${node.id}.${input.key}`;
-            option.textContent = `#${node.id} ${node.title}`;
-            select.appendChild(option);
-          }
-        }
+      for (const card of textareaCards) {
+        const option = document.createElement('option');
+        option.value = card.fullKey;
+        option.textContent = `#${card.id} ${card.title}`;
+        select.appendChild(option);
       }
     }
 
-    // 获取已加载的多行文本卡片
+    // 获取所有标签页中的多行文本卡片（去重）
     getTextareaCards() {
       const cards = [];
+      const seenKeys = new Set();
       const nodeMap = new Map(this.parsedNodes.map(n => [n.id, n]));
 
-      // 只遍历已加载的卡片（activeCards）
-      for (const nodeId of this.activeCards) {
+      // 收集所有标签页中的节点ID（去重）
+      const allNodeIds = new Set();
+      this.tabs.forEach(tab => {
+        if (tab.nodeIds) {
+          tab.nodeIds.forEach(id => allNodeIds.add(id));
+        }
+      });
+
+      // 遍历所有标签页中的卡片
+      for (const nodeId of allNodeIds) {
         const node = nodeMap.get(nodeId);
         if (!node) continue;
 
         for (const input of node.inputs) {
           if (input.widgetType === 'textarea') {
-            cards.push({
-              id: node.id,
-              key: input.key,
-              title: node.title,
-              label: input.label,
-              fullKey: `${node.id}.${input.key}`
-            });
+            const fullKey = `${node.id}.${input.key}`;
+            // 去重：避免同一个卡片出现多次
+            if (!seenKeys.has(fullKey)) {
+              seenKeys.add(fullKey);
+              cards.push({
+                id: node.id,
+                key: input.key,
+                title: node.title,
+                label: input.label,
+                fullKey: fullKey
+              });
+            }
           }
         }
       }
@@ -4957,9 +5460,7 @@
         if (!container.classList.contains('expanded')) return;
         
         this.thumbZoom = 1;
-        this.thumbPanX = 0;
-        this.thumbPanY = 0;
-        this.updateThumbTransform();
+        this.centerThumbImage();
       });
     }
     
@@ -4967,9 +5468,34 @@
     updateThumbTransform() {
       const image = this.elements.thumbImage;
       if (image) {
-        image.style.transform = `translate(${this.thumbPanX}px, ${this.thumbPanY}px) scale(${this.thumbZoom})`;
+        // 设置 transform-origin 为左上角，这样平移和缩放的计算更直观
         image.style.transformOrigin = '0 0';
+        image.style.transform = `translate(${this.thumbPanX}px, ${this.thumbPanY}px) scale(${this.thumbZoom})`;
       }
+    }
+    
+    // 让缩略图居中显示
+    centerThumbImage() {
+      const container = this.elements.previousResultThumb;
+      const image = this.elements.thumbImage;
+      
+      if (!container || !image) return;
+      
+      // 获取容器和图片的尺寸
+      const containerRect = container.getBoundingClientRect();
+      const imgWidth = image.naturalWidth || image.width;
+      const imgHeight = image.naturalHeight || image.height;
+      
+      if (imgWidth && imgHeight) {
+        // 计算让图片居中的平移量
+        this.thumbPanX = (containerRect.width - imgWidth) / 2;
+        this.thumbPanY = (containerRect.height - imgHeight) / 2;
+      } else {
+        this.thumbPanX = 0;
+        this.thumbPanY = 0;
+      }
+      
+      this.updateThumbTransform();
     }
 
     bindDragScroll() {
@@ -4981,8 +5507,13 @@
         const tagName = e.target.tagName.toLowerCase();
         if (['input', 'textarea', 'select', 'button', 'a', 'label'].includes(tagName)) return;
         if (e.target.closest('input, textarea, select, button, a, label')) return;
-        // 如果点击的是卡片标题栏，不触发拖拽（标题栏有拖拽移动卡片的功能）
-        if (e.target.closest('.config-card-header')) return;
+        // 如果点击的是折叠状态下的卡片标题栏，不触发拖拽滑动（标题栏有拖拽排序功能）
+        // 展开状态下的标题栏可以触发拖拽滑动
+        const cardHeader = e.target.closest('.config-card-header');
+        if (cardHeader) {
+          const card = cardHeader.closest('.config-card');
+          if (card && card.classList.contains('collapsed')) return;
+        }
         // 如果点击的是图像上传/裁剪区域，不触发拖拽
         if (e.target.closest('.image-upload-container, .image-preview-wrapper, .crop-overlay, .crop-box')) return;
         // 如果点击的是多行文本编辑框容器（包括空白区域），不触发拖拽
@@ -5644,8 +6175,8 @@
         resizer.style.display = '';
         panelConfig.style.display = '';
         this.rightPanelHidden = false;
-        // 恢复上一个结果图标大小
-        this.elements.previousResultThumb.classList.remove('mini');
+        // 恢复上一个结果图标大小 - 移除全屏模式类
+        this.elements.previousResultThumb.classList.remove('fullscreen-mode');
         // 将图像卡片移动回原来的位置
         this.restoreImageCards();
         // 隐藏圆形进度指示器
@@ -5659,8 +6190,8 @@
         resizer.style.display = 'none';
         panelConfig.style.display = 'none';
         this.rightPanelHidden = true;
-        // 缩小上一个结果图标
-        this.elements.previousResultThumb.classList.add('mini');
+        // 缩小上一个结果图标 - 添加全屏模式类（允许正确展开）
+        this.elements.previousResultThumb.classList.add('fullscreen-mode');
         // 创建图像卡片浮动图标
         this.createImageCardFloatIcons();
         // 显示圆形进度指示器
@@ -5956,6 +6487,15 @@
       this.parsedNodes = [];
       this.cardValues = {};
       this.outputNodeIds = new Set();
+      // 保存原始工作流的输入连接信息（用于重置功能）
+      this.originalInputLinks = {};
+      // 创建节点ID到节点标题的映射（用于显示上游节点名称）
+      this.nodeIdToTitle = {};
+      
+      // 先创建节点ID到标题的映射
+      for (const [nodeId, node] of Object.entries(workflow)) {
+        this.nodeIdToTitle[nodeId] = getNodeTitle(node, nodeId);
+      }
 
       for (const [nodeId, node] of Object.entries(workflow)) {
         const classType = node.class_type;
@@ -5963,15 +6503,39 @@
 
         const inputs = [];
         for (const [inputKey, inputValue] of Object.entries(node.inputs || {})) {
-          if (Array.isArray(inputValue) && inputValue.length === 2 && typeof inputValue[0] === 'string') continue;
+          // 检查是否是上游节点连接（数组格式：["nodeId", outputIndex]）
+          const isLink = Array.isArray(inputValue) && inputValue.length === 2 && typeof inputValue[0] === 'string';
+          
+          // 保存原始连接信息
+          if (isLink) {
+            if (!this.originalInputLinks[nodeId]) {
+              this.originalInputLinks[nodeId] = {};
+            }
+            this.originalInputLinks[nodeId][inputKey] = {
+              linkNodeId: inputValue[0],
+              linkOutputIndex: inputValue[1]
+            };
+          }
           
           // 规范化值：处理 __value__ 格式的错误数据
-          const normalizedValue = normalizeValue(inputValue);
-          const widgetType = inferWidgetType(inputKey, normalizedValue, classType);
+          const normalizedValue = isLink ? '' : normalizeValue(inputValue);
+          const widgetType = isLink ? 'link' : inferWidgetType(inputKey, normalizedValue, classType);
           if (widgetType === 'hidden') continue;
           
-          inputs.push({ key: inputKey, value: normalizedValue, widgetType: widgetType, label: formatLabel(inputKey) });
-          this.cardValues[nodeId + '.' + inputKey] = normalizedValue;
+          inputs.push({ 
+            key: inputKey, 
+            value: normalizedValue, 
+            widgetType: widgetType, 
+            label: formatLabel(inputKey),
+            // 上游连接信息
+            hasLink: isLink,
+            linkNodeId: isLink ? inputValue[0] : '',
+            linkOutputIndex: isLink ? inputValue[1] : 0
+          });
+          
+          if (!isLink) {
+            this.cardValues[nodeId + '.' + inputKey] = normalizedValue;
+          }
         }
 
         this.parsedNodes.push({
@@ -6051,13 +6615,22 @@
       card.className = 'config-card';
       card.dataset.nodeId = node.id;
       // 注意：不在整个卡片上设置 draggable，而是在标题栏上设置
+      
+      // 检查节点是否有任何上游连接
+      const hasAnyLink = node.inputs.some(input => {
+        const key = node.id + '.' + input.key;
+        const hasOriginalLink = this.originalInputLinks[node.id] && this.originalInputLinks[node.id][input.key];
+        const savedSettings = this.inputLinkSettings[key];
+        return hasOriginalLink || (savedSettings && savedSettings.enabled && savedSettings.linkNodeId);
+      });
 
       const header = document.createElement('div');
       header.className = 'config-card-header';
-      header.draggable = true; // 只在标题栏上启用拖拽
+      // 只有折叠状态下标题栏才可拖拽排序，展开状态下标题栏触发拖拽滑动
+      header.draggable = card.classList.contains('collapsed');
       header.innerHTML = `
         <span class="config-card-toggle">▼</span>
-        <span class="config-card-title">${node.title}</span>
+        <span class="config-card-title">[${node.id}] ${node.title}</span>
         <div class="config-card-actions">
           <button class="panel-btn panel-btn-secondary panel-btn-icon move-top-btn" title="移动到顶端">⏫</button>
           <button class="panel-btn panel-btn-secondary panel-btn-icon move-up-btn" title="上移">↑</button>
@@ -6085,7 +6658,9 @@
       };
       header.querySelector('.config-card-toggle').onclick = (e) => {
         e.stopPropagation();
-        card.classList.toggle('collapsed');
+        const isNowCollapsed = card.classList.toggle('collapsed');
+        // 更新标题栏的draggable属性：折叠时可拖拽排序，展开时不可拖拽排序
+        header.draggable = isNowCollapsed;
       };
       header.querySelector('.remove-card-btn').onclick = (e) => {
         e.stopPropagation();
@@ -6094,12 +6669,14 @@
 
       header.addEventListener('dblclick', (e) => {
         e.preventDefault();
-        card.classList.toggle('collapsed');
+        const isNowCollapsed = card.classList.toggle('collapsed');
+        // 更新标题栏的draggable属性：折叠时可拖拽排序，展开时不可拖拽排序
+        header.draggable = isNowCollapsed;
       });
 
       const body = document.createElement('div');
       body.className = 'config-card-body';
-      for (const input of node.inputs) body.appendChild(this.createFormGroup(node, input));
+      for (const input of node.inputs) body.appendChild(this.createFormGroup(node, input, card));
 
       card.appendChild(header);
       card.appendChild(body);
@@ -6267,22 +6844,404 @@
       // 由于 activeCards 和 currentTab.nodeIds 是同一个引用，不需要额外同步
     }
 
-    createFormGroup(node, input) {
+    createFormGroup(node, input, card) {
       const group = document.createElement('div');
       group.className = 'form-group';
+      group.dataset.inputKey = input.key;
       
-      // 【新增】图片类型不显示标签
-      if (input.widgetType !== 'image') {
-        const label = document.createElement('label');
-        label.className = 'form-label';
-        label.textContent = input.label;
-        group.appendChild(label);
+      // 检查是否有原始上游连接
+      const hasOriginalLink = this.originalInputLinks[node.id] && this.originalInputLinks[node.id][input.key];
+      const key = node.id + '.' + input.key;
+      
+      // 如果有上游连接，显示特殊的上游连接控件
+      if (hasOriginalLink) {
+        const upstreamControl = this.createUpstreamLinkControl(node, input, key, hasOriginalLink);
+        group.appendChild(upstreamControl);
+      } else {
+        // 没有上游连接，显示正常的输入控件
+        // 判断是否使用行内布局（数值类型使用行内布局）
+        const isInlineType = ['number', 'boolean', 'combo'].includes(input.widgetType);
+        if (isInlineType) {
+          group.classList.add('inline-layout');
+        }
+        
+        // 创建标签
+        if (input.widgetType !== 'image' && input.widgetType !== 'link') {
+          const label = document.createElement('label');
+          label.className = 'form-label';
+          label.textContent = input.label;
+          group.appendChild(label);
+        }
+        if (input.widgetType !== 'link') {
+          group.appendChild(this.createFormInput(node, input));
+        }
       }
       
-      group.appendChild(this.createFormInput(node, input));
       return group;
     }
     
+    // 创建上游连接控件（只给有上游连接的项目显示）
+    createUpstreamLinkControl(node, input, key, originalLink) {
+      const container = document.createElement('div');
+      container.className = 'upstream-link-row';
+      container.dataset.key = key;
+      
+      // 获取节点类型
+      const nodeClassType = this.workflow[node.id]?.class_type || '';
+      
+      // 获取保存的设置
+      const savedSettings = this.inputLinkSettings[key] || {
+        enabled: true,
+        linkNodeId: originalLink.linkNodeId,
+        linkOutputIndex: originalLink.linkOutputIndex
+      };
+      
+      // 获取禁用时的替代值设置
+      const savedDisabledValue = this.inputDisabledValues[key] || {};
+      
+      // 是否启用
+      const isEnabled = savedSettings.enabled !== false;
+      
+      // 获取输入项的数据类型（从字典中查找）
+      let dataType = null;
+      if (this.nodeTypeInputTypes[nodeClassType] && this.nodeTypeInputTypes[nodeClassType][input.key]) {
+        dataType = this.nodeTypeInputTypes[nodeClassType][input.key];
+      }
+      
+      // 启用按钮
+      const enableBtn = document.createElement('button');
+      enableBtn.type = 'button';
+      enableBtn.className = 'link-enable-btn' + (isEnabled ? ' enabled' : '');
+      enableBtn.textContent = '🔗';
+      enableBtn.title = isEnabled ? '点击禁用连接' : '点击启用连接';
+      
+      // 输入项名称
+      const nameLabel = document.createElement('span');
+      nameLabel.className = 'link-name-label';
+      nameLabel.textContent = input.label + ':';
+      
+      // 右侧控件组 - 连接设置（启用时显示）
+      const linkGroup = document.createElement('div');
+      linkGroup.className = 'link-right-group';
+      linkGroup.style.display = isEnabled ? '' : 'none';
+      
+      // 上游节点名称显示
+      const upstreamName = document.createElement('span');
+      upstreamName.className = 'link-upstream-name';
+      upstreamName.textContent = savedSettings.linkNodeId ? (this.nodeIdToTitle[savedSettings.linkNodeId] || '') : '';
+      
+      // ID标签
+      const idLabel = document.createElement('span');
+      idLabel.className = 'link-label';
+      idLabel.textContent = 'ID:';
+      
+      // ID输入框
+      const idInput = document.createElement('input');
+      idInput.type = 'text';
+      idInput.className = 'link-id-input';
+      idInput.placeholder = 'ID';
+      idInput.value = savedSettings.linkNodeId || '';
+      
+      // out标签
+      const outLabel = document.createElement('span');
+      outLabel.className = 'link-label';
+      outLabel.textContent = 'out:';
+      
+      // out输入框
+      const outInput = document.createElement('input');
+      outInput.type = 'number';
+      outInput.className = 'link-out-input';
+      outInput.placeholder = 'out';
+      outInput.value = savedSettings.linkOutputIndex || 0;
+      outInput.min = 0;
+      
+      // 重置按钮
+      const resetBtn = document.createElement('button');
+      resetBtn.type = 'button';
+      resetBtn.className = 'link-reset-btn';
+      resetBtn.textContent = '↺';
+      resetBtn.title = '重置为原始连接并启用';
+      
+      // 禁用时的值输入控件组
+      const valueGroup = document.createElement('div');
+      valueGroup.className = 'link-value-container';
+      valueGroup.style.display = isEnabled ? 'none' : '';
+      
+      // 创建值输入控件的函数
+      const createValueInput = (type, initialValue) => {
+        valueGroup.innerHTML = '';
+        
+        if (type === 'int') {
+          const input = document.createElement('input');
+          input.type = 'number';
+          input.className = 'link-value-input';
+          input.step = '1';
+          input.value = initialValue !== undefined ? initialValue : 0;
+          input.oninput = () => {
+            this.inputDisabledValues[key] = { dataType: 'int', value: parseInt(input.value) || 0 };
+          };
+          valueGroup.appendChild(input);
+        } else if (type === 'float') {
+          const input = document.createElement('input');
+          input.type = 'number';
+          input.className = 'link-value-input';
+          input.step = '0.01';
+          input.value = initialValue !== undefined ? initialValue : 0;
+          input.oninput = () => {
+            this.inputDisabledValues[key] = { dataType: 'float', value: parseFloat(input.value) || 0 };
+          };
+          valueGroup.appendChild(input);
+        } else if (type === 'string') {
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'link-value-input';
+          input.style.width = '100px';
+          input.value = initialValue !== undefined ? initialValue : '';
+          input.oninput = () => {
+            this.inputDisabledValues[key] = { dataType: 'string', value: input.value };
+          };
+          valueGroup.appendChild(input);
+        } else if (type === 'boolean') {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'link-value-btn ' + (initialValue === true ? 'true' : 'false');
+          btn.textContent = initialValue === true ? '真' : '假';
+          btn.onclick = () => {
+            const newVal = btn.classList.contains('true') ? false : true;
+            btn.classList.remove('true', 'false');
+            btn.classList.add(newVal ? 'true' : 'false');
+            btn.textContent = newVal ? '真' : '假';
+            this.inputDisabledValues[key] = { dataType: 'boolean', value: newVal };
+          };
+          valueGroup.appendChild(btn);
+        }
+      };
+      
+      // 创建数据类型选择下拉列表（当字典中没有时使用）
+      const createDataTypeSelect = () => {
+        valueGroup.innerHTML = '';
+        
+        const select = document.createElement('select');
+        select.className = 'link-value-input';
+        select.style.width = '60px';
+        select.innerHTML = `
+          <option value="">空</option>
+          <option value="int">整数</option>
+          <option value="float">浮点</option>
+          <option value="string">文本</option>
+          <option value="boolean">布尔</option>
+        `;
+        
+        const valueSpan = document.createElement('span');
+        valueSpan.style.marginLeft = '4px';
+        
+        select.onchange = () => {
+          const newType = select.value;
+          valueSpan.innerHTML = '';
+          
+          if (newType) {
+            // 创建值输入控件，但不隐藏下拉列表
+            const savedValue = this.inputDisabledValues[key]?.value;
+            createValueInputInSpan(newType, savedValue, valueSpan);
+          }
+          
+          if (newType) {
+            this.inputDisabledValues[key] = { dataType: newType, value: undefined };
+          } else {
+            this.inputDisabledValues[key] = { dataType: 'null', value: null };
+          }
+        };
+        
+        valueGroup.appendChild(select);
+        valueGroup.appendChild(valueSpan);
+      };
+      
+      // 在指定容器中创建值输入控件
+      const createValueInputInSpan = (type, initialValue, container) => {
+        container.innerHTML = '';
+        
+        if (type === 'int') {
+          const input = document.createElement('input');
+          input.type = 'number';
+          input.className = 'link-value-input';
+          input.step = '1';
+          input.value = initialValue !== undefined ? initialValue : 0;
+          input.oninput = () => {
+            this.inputDisabledValues[key] = { dataType: 'int', value: parseInt(input.value) || 0 };
+          };
+          container.appendChild(input);
+        } else if (type === 'float') {
+          const input = document.createElement('input');
+          input.type = 'number';
+          input.className = 'link-value-input';
+          input.step = '0.01';
+          input.value = initialValue !== undefined ? initialValue : 0;
+          input.oninput = () => {
+            this.inputDisabledValues[key] = { dataType: 'float', value: parseFloat(input.value) || 0 };
+          };
+          container.appendChild(input);
+        } else if (type === 'string') {
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'link-value-input';
+          input.style.width = '80px';
+          input.value = initialValue !== undefined ? initialValue : '';
+          input.oninput = () => {
+            this.inputDisabledValues[key] = { dataType: 'string', value: input.value };
+          };
+          container.appendChild(input);
+        } else if (type === 'boolean') {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'link-value-btn ' + (initialValue === true ? 'true' : 'false');
+          btn.textContent = initialValue === true ? '真' : '假';
+          btn.onclick = () => {
+            const newVal = btn.classList.contains('true') ? false : true;
+            btn.classList.remove('true', 'false');
+            btn.classList.add(newVal ? 'true' : 'false');
+            btn.textContent = newVal ? '真' : '假';
+            this.inputDisabledValues[key] = { dataType: 'boolean', value: newVal };
+          };
+          container.appendChild(btn);
+        }
+      };
+      
+      // 初始化禁用时的值输入控件
+      if (!isEnabled) {
+        if (dataType) {
+          // 有已知的数据类型
+          createValueInput(dataType, savedDisabledValue.value);
+        } else {
+          // 没有已知的数据类型，显示下拉选择
+          createDataTypeSelect();
+          // 如果有保存的类型，恢复
+          if (savedDisabledValue.dataType && savedDisabledValue.dataType !== 'null') {
+            const select = valueGroup.querySelector('select');
+            if (select) {
+              select.value = savedDisabledValue.dataType;
+              createValueInputInSpan(savedDisabledValue.dataType, savedDisabledValue.value, valueGroup.querySelector('span'));
+            }
+          }
+        }
+      }
+      
+      // 启用按钮点击事件
+      enableBtn.onclick = () => {
+        const wasEnabled = enableBtn.classList.contains('enabled');
+        
+        if (wasEnabled) {
+          // 禁用连接
+          enableBtn.classList.remove('enabled');
+          enableBtn.title = '点击启用连接';
+          linkGroup.style.display = 'none';
+          valueGroup.style.display = '';
+          
+          // 创建禁用时的值输入控件
+          if (dataType) {
+            createValueInput(dataType, this.inputDisabledValues[key]?.value);
+          } else {
+            createDataTypeSelect();
+            if (this.inputDisabledValues[key]?.dataType && this.inputDisabledValues[key].dataType !== 'null') {
+              const select = valueGroup.querySelector('select');
+              if (select) {
+                select.value = this.inputDisabledValues[key].dataType;
+                createValueInputInSpan(this.inputDisabledValues[key].dataType, this.inputDisabledValues[key].value, valueGroup.querySelector('span'));
+              }
+            }
+          }
+          
+          // 保存设置
+          this.inputLinkSettings[key] = {
+            enabled: false,
+            linkNodeId: idInput.value,
+            linkOutputIndex: parseInt(outInput.value) || 0
+          };
+          console.log(`[ComfyUI Panel] Disabled link for ${key}:`, this.inputLinkSettings[key]);
+        } else {
+          // 启用连接（不改变当前值）
+          enableBtn.classList.add('enabled');
+          enableBtn.title = '点击禁用连接';
+          linkGroup.style.display = '';
+          valueGroup.style.display = 'none';
+          
+          // 保存设置
+          this.inputLinkSettings[key] = {
+            enabled: true,
+            linkNodeId: idInput.value,
+            linkOutputIndex: parseInt(outInput.value) || 0
+          };
+          console.log(`[ComfyUI Panel] Enabled link for ${key}:`, this.inputLinkSettings[key]);
+        }
+      };
+      
+      // ID输入变化
+      idInput.oninput = () => {
+        // 更新上游节点名称
+        upstreamName.textContent = idInput.value ? (this.nodeIdToTitle[idInput.value] || '') : '';
+        
+        if (this.inputLinkSettings[key]) {
+          this.inputLinkSettings[key].linkNodeId = idInput.value;
+        } else {
+          this.inputLinkSettings[key] = {
+            enabled: enableBtn.classList.contains('enabled'),
+            linkNodeId: idInput.value,
+            linkOutputIndex: parseInt(outInput.value) || 0
+          };
+        }
+      };
+      
+      // out输入变化
+      outInput.oninput = () => {
+        if (this.inputLinkSettings[key]) {
+          this.inputLinkSettings[key].linkOutputIndex = parseInt(outInput.value) || 0;
+        } else {
+          this.inputLinkSettings[key] = {
+            enabled: enableBtn.classList.contains('enabled'),
+            linkNodeId: idInput.value,
+            linkOutputIndex: parseInt(outInput.value) || 0
+          };
+        }
+      };
+      
+      // 重置按钮点击 - 重置为原始值并启用
+      resetBtn.onclick = () => {
+        if (originalLink) {
+          idInput.value = originalLink.linkNodeId;
+          outInput.value = originalLink.linkOutputIndex;
+          
+          // 更新上游节点名称
+          upstreamName.textContent = this.nodeIdToTitle[originalLink.linkNodeId] || '';
+          
+          // 启用连接
+          enableBtn.classList.add('enabled');
+          enableBtn.title = '点击禁用连接';
+          linkGroup.style.display = '';
+          valueGroup.style.display = 'none';
+          
+          this.inputLinkSettings[key] = {
+            enabled: true,
+            linkNodeId: originalLink.linkNodeId,
+            linkOutputIndex: originalLink.linkOutputIndex
+          };
+        }
+      };
+      
+      container.appendChild(enableBtn);
+      container.appendChild(nameLabel);
+      
+      linkGroup.appendChild(upstreamName);
+      linkGroup.appendChild(idLabel);
+      linkGroup.appendChild(idInput);
+      linkGroup.appendChild(outLabel);
+      linkGroup.appendChild(outInput);
+      linkGroup.appendChild(resetBtn);
+      container.appendChild(linkGroup);
+      
+      container.appendChild(valueGroup);
+      
+      return container;
+    }
+
 
     createFormInput(node, input) {
       const key = node.id + '.' + input.key;
@@ -6442,28 +7401,18 @@
           numberInput.className = 'form-input';
           const savedNumValue = this.cardValues[key];
           numberInput.value = savedNumValue !== undefined ? savedNumValue : (input.value || 0);
+          
+          // 根据输入值的类型设置步进
+          // 如果原始值是小数，使用 0.01 步进；如果是整数，使用 1 步进
+          const originalValue = input.value;
+          if (originalValue !== undefined && originalValue !== null && !Number.isInteger(originalValue)) {
+            numberInput.step = '0.01';
+          } else {
+            numberInput.step = '1';
+          }
+          
           numberInput.oninput = (e) => { this.cardValues[key] = parseFloat(e.target.value) || 0; };
           return numberInput;
-        case 'slider':
-          const sliderContainer = document.createElement('div');
-          sliderContainer.className = 'form-slider-container';
-          const slider = document.createElement('input');
-          slider.type = 'range';
-          slider.className = 'form-slider';
-          const keyLower = input.key.toLowerCase();
-          if (keyLower.includes('step')) { slider.min = 1; slider.max = 100; }
-          else if (keyLower.includes('cfg')) { slider.min = 1; slider.max = 20; slider.step = 0.5; }
-          else if (keyLower.includes('denoise')) { slider.min = 0; slider.max = 1; slider.step = 0.05; }
-          else { slider.min = 0; slider.max = 100; }
-          const savedSliderValue = this.cardValues[key];
-          slider.value = savedSliderValue !== undefined ? savedSliderValue : (input.value || 0);
-          const sliderValue = document.createElement('span');
-          sliderValue.className = 'form-slider-value';
-          sliderValue.textContent = slider.value;
-          slider.oninput = (e) => { sliderValue.textContent = e.target.value; this.cardValues[key] = parseFloat(e.target.value); };
-          sliderContainer.appendChild(slider);
-          sliderContainer.appendChild(sliderValue);
-          return sliderContainer;
         case 'checkbox':
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
@@ -7818,6 +8767,9 @@
       // 折叠所有配置卡片
       document.querySelectorAll('.config-card').forEach(card => {
         card.classList.add('collapsed');
+        // 折叠时标题栏可拖拽排序
+        const header = card.querySelector('.config-card-header');
+        if (header) header.draggable = true;
       });
     }
 
@@ -7827,6 +8779,9 @@
       // 展开所有配置卡片
       document.querySelectorAll('.config-card').forEach(card => {
         card.classList.remove('collapsed');
+        // 展开时标题栏不可拖拽排序（触发拖拽滑动）
+        const header = card.querySelector('.config-card-header');
+        if (header) header.draggable = false;
       });
     }
 
@@ -7909,6 +8864,48 @@
         const nodeId = key.substring(0, dotIndex);
         const inputKey = key.substring(dotIndex + 1);
         if (updatedWorkflow[nodeId]?.inputs) updatedWorkflow[nodeId].inputs[inputKey] = value;
+      }
+
+      // 应用上游节点连接设置
+      console.log('[ComfyUI Panel] inputLinkSettings:', JSON.stringify(this.inputLinkSettings));
+      console.log('[ComfyUI Panel] inputDisabledValues:', JSON.stringify(this.inputDisabledValues));
+      for (const [key, settings] of Object.entries(this.inputLinkSettings)) {
+        const dotIndex = key.indexOf('.');
+        const nodeId = key.substring(0, dotIndex);
+        const inputKey = key.substring(dotIndex + 1);
+        
+        console.log(`[ComfyUI Panel] Processing ${key}: enabled=${settings.enabled}, linkNodeId=${settings.linkNodeId}`);
+        
+        if (updatedWorkflow[nodeId]?.inputs) {
+          if (settings.enabled === false) {
+            // 禁用连接：使用替代值或null
+            const disabledValue = this.inputDisabledValues[key];
+            if (disabledValue && disabledValue.dataType !== 'null' && disabledValue.value !== undefined) {
+              // 使用用户设置的替代值
+              updatedWorkflow[nodeId].inputs[inputKey] = disabledValue.value;
+              console.log(`[ComfyUI Panel] Disabled input link: ${nodeId}.${inputKey} -> ${disabledValue.value} (${disabledValue.dataType})`);
+            } else {
+              // 没有替代值，使用null
+              updatedWorkflow[nodeId].inputs[inputKey] = null;
+              console.log(`[ComfyUI Panel] Disabled input link: ${nodeId}.${inputKey} -> null`);
+            }
+          } else if (settings.enabled && settings.linkNodeId) {
+            // 启用连接：设置上游连接
+            updatedWorkflow[nodeId].inputs[inputKey] = [settings.linkNodeId, settings.linkOutputIndex];
+            console.log(`[ComfyUI Panel] Applied input link: ${nodeId}.${inputKey} -> [${settings.linkNodeId}, ${settings.linkOutputIndex}]`);
+          }
+        }
+      }
+      
+      // 打印最终工作流中的相关节点输入
+      console.log('[ComfyUI Panel] Final workflow inputs for nodes with link settings:');
+      for (const [key, settings] of Object.entries(this.inputLinkSettings)) {
+        const dotIndex = key.indexOf('.');
+        const nodeId = key.substring(0, dotIndex);
+        const inputKey = key.substring(dotIndex + 1);
+        if (updatedWorkflow[nodeId]?.inputs) {
+          console.log(`  ${nodeId}.${inputKey}:`, updatedWorkflow[nodeId].inputs[inputKey]);
+        }
       }
 
       this.isExecuting = true;
@@ -8618,6 +9615,14 @@
         highlightColorB: this.highlightColorB,
         editorBgColorDark: this.editorBgColorDark,
         editorBgColorLight: this.editorBgColorLight,
+        // 上游节点连接设置
+        inputLinkSettings: this.inputLinkSettings,
+        // 卡片级别的连接显示开关状态
+        cardLinkToggleState: this.cardLinkToggleState,
+        // 输入项的默认值类型配置
+        inputDefaultConfig: this.inputDefaultConfig,
+        // 禁用连接时的替代值设置
+        inputDisabledValues: this.inputDisabledValues,
         // 保存本地输出设置
         localOutputConfigs: this.getLocalOutputConfigs()
       };
@@ -8808,6 +9813,26 @@
         if (this.imageCropData.hasOwnProperty(key)) {
           this.imageCropData[key].needsUpload = false;
         }
+      }
+
+      // 恢复上游节点连接设置
+      if (config.inputLinkSettings) {
+        this.inputLinkSettings = { ...config.inputLinkSettings };
+      }
+
+      // 恢复卡片级别的连接显示开关状态
+      if (config.cardLinkToggleState) {
+        this.cardLinkToggleState = { ...config.cardLinkToggleState };
+      }
+
+      // 恢复输入项的默认值类型配置
+      if (config.inputDefaultConfig) {
+        this.inputDefaultConfig = { ...config.inputDefaultConfig };
+      }
+
+      // 恢复禁用连接时的替代值设置
+      if (config.inputDisabledValues) {
+        this.inputDisabledValues = { ...config.inputDisabledValues };
       }
 
       // 恢复本地输出设置
