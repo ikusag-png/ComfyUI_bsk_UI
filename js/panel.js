@@ -6489,6 +6489,11 @@
       this.outputNodeIds = new Set();
       // 保存原始工作流的输入连接信息（用于重置功能）
       this.originalInputLinks = {};
+      // 重置用户配置的上游连接设置，避免旧工作流的配置影响新工作流
+      this.inputLinkSettings = {};
+      this.cardLinkToggleState = {};
+      this.inputDefaultConfig = {};
+      this.inputDisabledValues = {};
       // 创建节点ID到节点标题的映射（用于显示上游节点名称）
       this.nodeIdToTitle = {};
       
@@ -9113,8 +9118,9 @@
       // 停止帧动画
       this.stopFrameAnimation();
       this.clearPreviewFrames();
-      
+
       this.generatedImages = images;
+      this.generatedVideos = [];  // 清空视频列表，确保下载时使用正确的类型
       if (images?.length > 0) {
         const image = images[0];
         const url = this.baseUrl + `/view?filename=${encodeURIComponent(image.filename)}&type=${image.type}&subfolder=${image.subfolder || ''}&t=${Date.now()}`;
@@ -9162,8 +9168,9 @@
         // console.log('[ComfyUI Panel] No videos to display');
         return;
       }
-      
+
       this.generatedVideos = videos;
+      this.generatedImages = [];  // 清空图片列表，确保下载时使用正确的类型
       const video = videos[0];
       
       // console.log('[ComfyUI Panel] First video:', video);
