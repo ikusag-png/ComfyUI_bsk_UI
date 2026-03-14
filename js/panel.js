@@ -1057,6 +1057,8 @@
           border-radius: 8px;
         }
         .previous-result-thumb .thumb-image {
+          width: auto;
+          height: auto;
           max-width: 100%;
           max-height: 100%;
           object-fit: contain;
@@ -1070,9 +1072,11 @@
           position: absolute;
           top: 0;
           left: 0;
-          transform: none;
+          width: auto;
+          height: auto;
           max-width: none;
           max-height: none;
+          transform-origin: 0 0;
         }
         .previous-result-thumb .thumb-download-indicator {
           position: absolute;
@@ -1087,6 +1091,9 @@
           justify-content: center;
           font-size: 12px;
           transition: all 0.2s;
+        }
+        .previous-result-thumb.expanded .thumb-download-indicator {
+          display: none;
         }
         .previous-result-thumb .thumb-download-indicator::after {
           content: '⬇';
@@ -1118,6 +1125,44 @@
         }
         .previous-result-thumb.mini.downloaded .thumb-download-indicator::after {
           font-size: 7px;
+        }
+
+        /* 展开状态下的操作按钮 */
+        .thumb-expanded-actions {
+          display: none;
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          gap: 8px;
+          z-index: 100;
+        }
+        .previous-result-thumb.expanded .thumb-expanded-actions {
+          display: flex;
+        }
+        .thumb-action-btn {
+          width: 44px;
+          height: 44px;
+          border-radius: 8px;
+          border: none;
+          background: rgba(0, 0, 0, 0.7);
+          color: white;
+          font-size: 20px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+          backdrop-filter: blur(4px);
+        }
+        .thumb-action-btn:hover {
+          background: rgba(102, 126, 234, 0.8);
+          transform: scale(1.1);
+        }
+        .thumb-download-btn:hover {
+          background: rgba(34, 197, 94, 0.8);
+        }
+        .thumb-copy-btn:hover {
+          background: rgba(59, 130, 246, 0.8);
         }
 
         /* 加载图像卡片浮动面板 - 小图标模式 */
@@ -2636,6 +2681,11 @@
               <div class="previous-result-thumb" id="previous-result-thumb" style="display:none">
                 <img class="thumb-image" id="thumb-image">
                 <div class="thumb-download-indicator" id="thumb-download-indicator"></div>
+                <!-- 展开状态下的操作按钮 -->
+                <div class="thumb-expanded-actions" id="thumb-expanded-actions">
+                  <button class="thumb-action-btn thumb-download-btn" id="thumb-download-btn" title="下载">⬇</button>
+                  <button class="thumb-action-btn thumb-copy-btn" id="thumb-copy-btn" title="复制">📋</button>
+                </div>
               </div>
 
               <!-- 圆形进度指示器（Tab隐藏右侧面板时显示） -->
@@ -2971,6 +3021,9 @@
         previousResultThumb: document.getElementById('previous-result-thumb'),
         thumbImage: document.getElementById('thumb-image'),
         thumbDownloadIndicator: document.getElementById('thumb-download-indicator'),
+        thumbExpandedActions: document.getElementById('thumb-expanded-actions'),
+        thumbDownloadBtn: document.getElementById('thumb-download-btn'),
+        thumbCopyBtn: document.getElementById('thumb-copy-btn'),
         // 圆形进度指示器
         circularProgress: document.getElementById('circular-progress'),
         circularProgressText: document.getElementById('circular-progress-text'),
@@ -3185,7 +3238,7 @@
           clearTimeout(this.thumbHoverTimeout);
           this.thumbHoverTimeout = null;
         }
-        
+
         // 延迟收起，给用户时间移动回来
         this.thumbCollapseTimeout = setTimeout(() => {
           this.elements.previousResultThumb.classList.remove('expanded');
@@ -3193,11 +3246,24 @@
           this.thumbZoom = 1;
           this.thumbPanX = 0;
           this.thumbPanY = 0;
+          // 清除JavaScript设置的transform，让CSS样式生效
+          this.elements.thumbImage.style.transform = '';
+          this.elements.thumbImage.style.transformOrigin = '';
         }, 300);
       });
 
       // 为展开的缩略图添加缩放和拖拽功能
       this.bindThumbZoomEvents();
+
+      // 展开状态下的操作按钮事件
+      this.elements.thumbDownloadBtn.onclick = (e) => {
+        e.stopPropagation();
+        this.downloadPreviousResult();
+      };
+      this.elements.thumbCopyBtn.onclick = async (e) => {
+        e.stopPropagation();
+        await this.copyPreviousResult();
+      };
 
       this.elements.addTabBtn.onclick = () => this.addTabFromInput();
 
@@ -5474,27 +5540,40 @@
       }
     }
     
-    // 让缩略图居中显示
+    // 让缩略图居中显示，并按比例约束在视口内
     centerThumbImage() {
       const container = this.elements.previousResultThumb;
       const image = this.elements.thumbImage;
-      
+
       if (!container || !image) return;
-      
+
       // 获取容器和图片的尺寸
       const containerRect = container.getBoundingClientRect();
       const imgWidth = image.naturalWidth || image.width;
       const imgHeight = image.naturalHeight || image.height;
-      
+
       if (imgWidth && imgHeight) {
+        // 计算缩放比例，让图片完整显示在容器内（留一些边距）
+        const padding = 60; // 边距，为操作按钮留空间
+        const availableWidth = containerRect.width - padding * 2;
+        const availableHeight = containerRect.height - padding * 2;
+
+        const scaleX = availableWidth / imgWidth;
+        const scaleY = availableHeight / imgHeight;
+        // 使用较小的缩放比例，确保图片完整显示
+        this.thumbZoom = Math.min(scaleX, scaleY, 1); // 最大不超过1（不放大）
+
         // 计算让图片居中的平移量
-        this.thumbPanX = (containerRect.width - imgWidth) / 2;
-        this.thumbPanY = (containerRect.height - imgHeight) / 2;
+        const scaledWidth = imgWidth * this.thumbZoom;
+        const scaledHeight = imgHeight * this.thumbZoom;
+        this.thumbPanX = (containerRect.width - scaledWidth) / 2;
+        this.thumbPanY = (containerRect.height - scaledHeight) / 2;
       } else {
+        this.thumbZoom = 1;
         this.thumbPanX = 0;
         this.thumbPanY = 0;
       }
-      
+
       this.updateThumbTransform();
     }
 
@@ -9256,7 +9335,14 @@
 
       this.elements.thumbImage.src = this.previousResult.url;
       this.elements.previousResultThumb.style.display = 'flex';
-      
+
+      // 重置图片的transform样式，确保缩略图能正确显示
+      this.elements.thumbImage.style.transform = '';
+      this.elements.thumbImage.style.transformOrigin = '';
+      this.thumbZoom = 1;
+      this.thumbPanX = 0;
+      this.thumbPanY = 0;
+
       // 更新下载状态样式
       if (this.previousResult.downloaded) {
         this.elements.previousResultThumb.classList.add('downloaded');
@@ -9275,16 +9361,7 @@
         const response = await fetch(url);
         const blob = await response.blob();
 
-        // 如果已下载，复制到剪贴板
-        if (this.previousResult.downloaded) {
-          // 转换为 PNG 格式以确保剪贴板兼容性
-          const pngBlob = await this.convertToPNG(blob);
-          await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
-          this.showToast('已复制到剪贴板');
-          return;
-        }
-
-        // 否则下载
+        // 下载文件
         const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = blobUrl;
@@ -9295,9 +9372,29 @@
         // 标记为已下载
         this.previousResult.downloaded = true;
         this.updatePreviousResultThumb();
+        this.showToast('已下载: ' + filename);
       } catch (e) {
         console.error('[ComfyUI Panel] Download previous result failed:', e);
-        this.showToast('操作失败: ' + e.message);
+        this.showToast('下载失败: ' + e.message);
+      }
+    }
+
+    // 复制上一个结果到剪贴板
+    async copyPreviousResult() {
+      if (!this.previousResult) return;
+
+      try {
+        const url = this.previousResult.url;
+        const response = await fetch(url);
+        const blob = await response.blob();
+
+        // 转换为 PNG 格式以确保剪贴板兼容性
+        const pngBlob = await this.convertToPNG(blob);
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+        this.showToast('已复制到剪贴板');
+      } catch (e) {
+        console.error('[ComfyUI Panel] Copy previous result failed:', e);
+        this.showToast('复制失败: ' + e.message);
       }
     }
 
