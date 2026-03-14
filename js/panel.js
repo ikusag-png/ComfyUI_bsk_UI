@@ -253,7 +253,8 @@
       this.createUI();
       this.bindEvents();
       this.bindKeyboard();
-      this.loadConfig();
+      // 配置加载延迟到首次点击显示面板按钮时触发
+      this.configLoaded = false;
 
       if (this.tabs.length === 0) {
         this.addTab('常用', 'main');
@@ -825,11 +826,11 @@
           transition: opacity 0.3s ease;
         }
         .preview-video-info.visible { opacity: 1; }
-        .preview-placeholder { width: 100%; aspect-ratio: 1; max-width: 350px; background: rgba(255, 255, 255, 0.03); border: 2px dashed rgba(255, 255, 255, 0.15); border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: rgba(255, 255, 255, 0.3); }
+        .preview-placeholder { width: 100%; aspect-ratio: 1; max-width: 350px; background: rgba(255, 255, 255, 0.03); border: 2px dashed rgba(255, 255, 255, 0.15); border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #ffffffb0; }
         
         .preview-zoom-info {
           position: absolute;
-          top: 12px;
+          bottom: 12px;
           left: 12px;
           background: rgba(86, 86, 86, 0.6);
           color: rgba(255, 255, 255, 0.9);
@@ -888,7 +889,7 @@
           cursor: pointer;
           box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
           border: 2px solid rgba(255, 255, 255, 0.2);
-          z-index: 20;
+          z-index: 50;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -904,7 +905,7 @@
           height: auto;
           border-color: rgba(102, 126, 234, 0.6);
           box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-          z-index: 30;
+          z-index: 60;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -939,6 +940,189 @@
         }
         .previous-result-thumb.downloaded .thumb-download-indicator {
           background: rgba(34, 197, 94, 0.3);
+        }
+
+        /* 上一个结果小图标模式（右侧面板隐藏时） */
+        .previous-result-thumb.mini {
+          width: 40px;
+          height: 40px;
+          border-radius: 6px;
+        }
+        .previous-result-thumb.mini .thumb-download-indicator {
+          width: 14px;
+          height: 14px;
+          font-size: 8px;
+          bottom: 2px;
+          right: 2px;
+        }
+        .previous-result-thumb.mini .thumb-download-indicator::after {
+          font-size: 8px;
+        }
+        .previous-result-thumb.mini.downloaded .thumb-download-indicator::after {
+          font-size: 7px;
+        }
+
+        /* 加载图像卡片浮动面板 - 小图标模式 */
+        .image-card-float-icon {
+          position: absolute;
+          right: 10px;
+          width: 40px;
+          height: 40px;
+          border-radius: 6px;
+          overflow: hidden;
+          cursor: pointer;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+          border: 2px solid rgba(255, 255, 255, 0.2);
+          z-index: 20;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(0, 0, 0, 0.3);
+          transition: all 0.2s ease;
+        }
+        .image-card-float-icon:hover {
+          border-color: rgba(102, 126, 234, 0.6);
+          transform: scale(1.05);
+        }
+        .image-card-float-icon .icon-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .image-card-float-icon .icon-label {
+          position: absolute;
+          bottom: 2px;
+          right: 2px;
+          background: rgba(0, 0, 0, 0.7);
+          color: white;
+          font-size: 9px;
+          padding: 1px 3px;
+          border-radius: 2px;
+          max-width: 36px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        /* 加载图像卡片浮动面板 - 展开模式 */
+        .image-card-float-panel {
+          position: fixed;
+          top: 0;
+          right: 0;
+          width: 33.33%;
+          height: 100vh;
+          background: #ffffff0a;
+          backdrop-filter: blur(10px);
+          border-left: 1px solid rgba(255, 255, 255, 0.1);
+          z-index: 100;
+          display: none;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        .image-card-float-panel.visible {
+          display: flex;
+        }
+        .image-card-float-panel .float-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px 12px;
+          background: #fffefe54;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+          flex-shrink: 0;
+        }
+        .image-card-float-panel .float-header-left {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .image-card-float-panel .float-title {
+          color: white;
+          font-size: 14px;
+          font-weight: 500;
+        }
+        .image-card-float-panel .float-pin-btn {
+          background: rgba(255, 255, 255, 0.1);
+          border: none;
+          border-radius: 4px;
+          color: rgba(255, 255, 255, 0.6);
+          cursor: pointer;
+          font-size: 14px;
+          padding: 4px 8px;
+          transition: all 0.2s;
+        }
+        .image-card-float-panel .float-pin-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+          color: white;
+        }
+        .image-card-float-panel .float-pin-btn.pinned {
+          color: #fbbf24;
+          transform: rotate(45deg);
+        }
+        .image-card-float-panel .float-body {
+          flex: 1;
+          overflow-y: auto;
+          padding: 10px;
+        }
+        .image-card-float-panel .float-body::-webkit-scrollbar {
+          width: 6px;
+        }
+        .image-card-float-panel .float-body::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.05);
+        }
+        .image-card-float-panel .float-body::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.2);
+          border-radius: 3px;
+        }
+
+        /* 圆形进度指示器 */
+        .circular-progress {
+          position: absolute;
+          top: 20px;
+          left: 20px;
+          width: 60px;
+          height: 60px;
+          z-index: 25;
+          display: none;
+        }
+        .circular-progress.visible {
+          display: block;
+        }
+        .circular-progress svg {
+          width: 100%;
+          height: 100%;
+          transform: rotate(-90deg);
+        }
+        .circular-progress .progress-bg {
+          fill: none;
+          stroke: rgba(255, 255, 255, 0.1);
+          stroke-width: 4;
+        }
+        .circular-progress .progress-fill {
+          fill: none;
+          stroke: url(#progress-gradient);
+          stroke-width: 4;
+          stroke-linecap: round;
+          stroke-dasharray: 157;
+          stroke-dashoffset: 157;
+          transition: stroke-dashoffset 0.3s ease;
+        }
+        .circular-progress .progress-text {
+          position: absolute;
+          top: 50%;
+          left: 25%;
+          transform: translate(-50%, -50%);
+          color: white;
+          font-size: 12px;
+          font-weight: 500;
+          font-family: monospace;
+        }
+        .circular-progress .progress-icon {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          font-size: 20px;
         }
 
         .progress-container {
@@ -1964,6 +2148,32 @@
                 <div class="thumb-download-indicator" id="thumb-download-indicator"></div>
               </div>
 
+              <!-- 圆形进度指示器（Tab隐藏右侧面板时显示） -->
+              <div class="circular-progress" id="circular-progress">
+                <svg viewBox="0 0 60 60">
+                  <defs>
+                    <linearGradient id="progress-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" style="stop-color:#667eea"/>
+                      <stop offset="100%" style="stop-color:#764ba2"/>
+                    </linearGradient>
+                  </defs>
+                  <circle class="progress-bg" cx="30" cy="30" r="25"/>
+                  <circle class="progress-fill" cx="30" cy="30" r="25"/>
+                </svg>
+                <span class="progress-text" id="circular-progress-text">0%</span>
+              </div>
+
+              <!-- 加载图像卡片浮动面板容器 -->
+              <div class="image-card-float-panel" id="image-card-float-panel">
+                <div class="float-header">
+                  <div class="float-header-left">
+                    <span class="float-title" id="float-panel-title">图像加载</span>
+                  </div>
+                  <button class="float-pin-btn" id="float-panel-pin" title="钉住面板">📌</button>
+                </div>
+                <div class="float-body" id="float-panel-body"></div>
+              </div>
+
               <!-- 提示词库面板 - 左右布局 -->
               <div class="prompt-library-panel" id="prompt-library-panel">
                 <!-- 左侧预览区域 -->
@@ -2262,6 +2472,14 @@
         previousResultThumb: document.getElementById('previous-result-thumb'),
         thumbImage: document.getElementById('thumb-image'),
         thumbDownloadIndicator: document.getElementById('thumb-download-indicator'),
+        // 圆形进度指示器
+        circularProgress: document.getElementById('circular-progress'),
+        circularProgressText: document.getElementById('circular-progress-text'),
+        // 加载图像卡片浮动面板
+        imageCardFloatPanel: document.getElementById('image-card-float-panel'),
+        floatPanelTitle: document.getElementById('float-panel-title'),
+        floatPanelBody: document.getElementById('float-panel-body'),
+        floatPanelPin: document.getElementById('float-panel-pin'),
         progressContainer: document.getElementById('progress-container'),
         progressFill: document.getElementById('progress-fill'),
         progressText: document.getElementById('progress-text'),
@@ -2421,32 +2639,68 @@
       });
 
       // 浮动缩略图点击下载
-      this.elements.previousResultThumb.onclick = () => this.downloadPreviousResult();
+      this.elements.previousResultThumb.onclick = (e) => {
+        // 只有在未展开状态下才触发下载
+        if (!this.elements.previousResultThumb.classList.contains('expanded')) {
+          this.downloadPreviousResult();
+        }
+      };
 
-      // 浮动缩略图悬停放大效果（使用JavaScript避免CSS :hover闪烁问题）
-      let thumbHoverTimeout = null;
-      let isThumbExpanded = false;
+      // 浮动缩略图悬停放大效果
+      // 缩略图缩放和平移状态
+      this.thumbZoom = 1;
+      this.thumbPanX = 0;
+      this.thumbPanY = 0;
+      this.isDraggingThumb = false;
+      this.thumbDragStartX = 0;
+      this.thumbDragStartY = 0;
+      this.thumbDragStartPanX = 0;
+      this.thumbDragStartPanY = 0;
+      
+      // 使用一个变量来跟踪是否应该保持展开
+      this.thumbShouldStayExpanded = false;
+      this.thumbHoverTimeout = null;
+      this.thumbCollapseTimeout = null;
 
+      // 鼠标移入展开
       this.elements.previousResultThumb.addEventListener('mouseenter', () => {
-        // 延迟一点展开，避免鼠标快速划过时触发
-        thumbHoverTimeout = setTimeout(() => {
-          isThumbExpanded = true;
+        // 清除收起定时器
+        if (this.thumbCollapseTimeout) {
+          clearTimeout(this.thumbCollapseTimeout);
+          this.thumbCollapseTimeout = null;
+        }
+        
+        // 延迟展开
+        this.thumbHoverTimeout = setTimeout(() => {
           this.elements.previousResultThumb.classList.add('expanded');
-        }, 100);
+          // 重置缩放和平移
+          this.thumbZoom = 1;
+          this.thumbPanX = 0;
+          this.thumbPanY = 0;
+          this.updateThumbTransform();
+        }, 150);
       });
 
+      // 鼠标移出收起
       this.elements.previousResultThumb.addEventListener('mouseleave', () => {
-        // 清除可能存在的延迟展开定时器
-        if (thumbHoverTimeout) {
-          clearTimeout(thumbHoverTimeout);
-          thumbHoverTimeout = null;
+        // 清除展开定时器
+        if (this.thumbHoverTimeout) {
+          clearTimeout(this.thumbHoverTimeout);
+          this.thumbHoverTimeout = null;
         }
-        // 只有在展开状态下才收起
-        if (isThumbExpanded) {
-          isThumbExpanded = false;
+        
+        // 延迟收起，给用户时间移动回来
+        this.thumbCollapseTimeout = setTimeout(() => {
           this.elements.previousResultThumb.classList.remove('expanded');
-        }
+          // 重置缩放和平移
+          this.thumbZoom = 1;
+          this.thumbPanX = 0;
+          this.thumbPanY = 0;
+        }, 300);
       });
+
+      // 为展开的缩略图添加缩放和拖拽功能
+      this.bindThumbZoomEvents();
 
       this.elements.addTabBtn.onclick = () => this.addTabFromInput();
 
@@ -4071,8 +4325,15 @@
      * @param {string} url - 图片URL
      */
     setBackgroundWithPreload(url) {
+      // 如果URL为空或与当前背景相同，不做任何操作
+      if (!url) return;
+      
+      const currentBg = this.elements.previewContentBg?.style.backgroundImage || '';
+      if (currentBg.includes(url)) return;
+      
       // 创建一个临时图片来预加载
       const preloadImg = new Image();
+      
       preloadImg.onload = () => {
         // 图片加载完成后，同时更新两个背景
         // 左侧预览窗口背景图（无磨砂效果）
@@ -4084,6 +4345,11 @@
           this.elements.contentBg.style.backgroundImage = `url(${url})`;
         }
       };
+      
+      preloadImg.onerror = () => {
+        console.warn('[ComfyUI Panel] Failed to preload background image:', url);
+      };
+      
       preloadImg.src = url;
       
       // 如果图片已经缓存，立即设置
@@ -4617,6 +4883,93 @@
       this.previewPanY = 0;
       this.updatePreviewTransform();
       this.showZoomInfo();
+    }
+
+    // 缩略图缩放和拖拽事件绑定
+    bindThumbZoomEvents() {
+      const container = this.elements.previousResultThumb;
+      const image = this.elements.thumbImage;
+      
+      // 鼠标滚轮缩放
+      container.addEventListener('wheel', (e) => {
+        if (!container.classList.contains('expanded')) return;
+        
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const rect = container.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        
+        // 缩放因子
+        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+        const newZoom = Math.max(0.1, Math.min(10, this.thumbZoom * zoomFactor));
+        
+        // 以鼠标位置为锚点进行缩放
+        const scale = newZoom / this.thumbZoom;
+        const imgX = (mouseX - this.thumbPanX) / this.thumbZoom;
+        const imgY = (mouseY - this.thumbPanY) / this.thumbZoom;
+        
+        this.thumbZoom = newZoom;
+        this.thumbPanX = mouseX - imgX * newZoom;
+        this.thumbPanY = mouseY - imgY * newZoom;
+        
+        this.updateThumbTransform();
+      }, { passive: false });
+      
+      // 鼠标拖拽平移
+      container.addEventListener('mousedown', (e) => {
+        if (!container.classList.contains('expanded')) return;
+        if (e.button !== 0) return; // 只响应左键
+        
+        this.isDraggingThumb = true;
+        this.thumbDragStartX = e.clientX;
+        this.thumbDragStartY = e.clientY;
+        this.thumbDragStartPanX = this.thumbPanX;
+        this.thumbDragStartPanY = this.thumbPanY;
+        
+        container.style.cursor = 'grabbing';
+        e.preventDefault();
+        e.stopPropagation();
+      });
+      
+      document.addEventListener('mousemove', (e) => {
+        if (!this.isDraggingThumb) return;
+        
+        const dx = e.clientX - this.thumbDragStartX;
+        const dy = e.clientY - this.thumbDragStartY;
+        
+        this.thumbPanX = this.thumbDragStartPanX + dx;
+        this.thumbPanY = this.thumbDragStartPanY + dy;
+        
+        this.updateThumbTransform();
+      });
+      
+      document.addEventListener('mouseup', () => {
+        if (this.isDraggingThumb) {
+          this.isDraggingThumb = false;
+          container.style.cursor = '';
+        }
+      });
+      
+      // 双击重置缩放和平移
+      container.addEventListener('dblclick', (e) => {
+        if (!container.classList.contains('expanded')) return;
+        
+        this.thumbZoom = 1;
+        this.thumbPanX = 0;
+        this.thumbPanY = 0;
+        this.updateThumbTransform();
+      });
+    }
+    
+    // 更新缩略图变换
+    updateThumbTransform() {
+      const image = this.elements.thumbImage;
+      if (image) {
+        image.style.transform = `translate(${this.thumbPanX}px, ${this.thumbPanY}px) scale(${this.thumbZoom})`;
+        image.style.transformOrigin = '0 0';
+      }
     }
 
     bindDragScroll() {
@@ -5248,6 +5601,12 @@
         }
       }
       
+      // 首次点击时加载服务器配置
+      if (!this.configLoaded) {
+        this.configLoaded = true;
+        this.loadConfig();
+      }
+      
       this.panel.classList.add('visible');
       this.openBtn.style.display = 'none';
       this.panelVisible = true;
@@ -5285,6 +5644,14 @@
         resizer.style.display = '';
         panelConfig.style.display = '';
         this.rightPanelHidden = false;
+        // 恢复上一个结果图标大小
+        this.elements.previousResultThumb.classList.remove('mini');
+        // 将图像卡片移动回原来的位置
+        this.restoreImageCards();
+        // 隐藏圆形进度指示器
+        this.hideCircularProgress();
+        // 隐藏浮动面板
+        this.elements.imageCardFloatPanel.classList.remove('visible');
       } else {
         // 隐藏右侧面板
         this.savedPreviewWidth = previewPanel.style.width || '66.67%';
@@ -5292,6 +5659,263 @@
         resizer.style.display = 'none';
         panelConfig.style.display = 'none';
         this.rightPanelHidden = true;
+        // 缩小上一个结果图标
+        this.elements.previousResultThumb.classList.add('mini');
+        // 创建图像卡片浮动图标
+        this.createImageCardFloatIcons();
+        // 显示圆形进度指示器
+        this.showCircularProgress();
+      }
+    }
+
+    // 获取所有标签页中的图像加载卡片ID（去重）
+    getAllImageCardIds() {
+      const allNodeIds = new Set();
+      
+      // 遍历所有标签页收集节点ID
+      this.tabs.forEach(tab => {
+        if (tab.nodeIds) {
+          tab.nodeIds.forEach(id => allNodeIds.add(id));
+        }
+      });
+      
+      // 过滤出图像加载节点
+      const imageNodeIds = [];
+      allNodeIds.forEach(nodeId => {
+        const node = this.parsedNodes.find(n => n.id === nodeId);
+        if (node && node.isImageNode && node.inputs.length > 0) {
+          imageNodeIds.push(nodeId);
+        }
+      });
+      
+      return imageNodeIds;
+    }
+
+    // 创建图像卡片浮动图标
+    createImageCardFloatIcons() {
+      const imageNodeIds = this.getAllImageCardIds();
+      const previewContent = document.querySelector('.preview-content');
+      
+      // 清除之前创建的浮动图标
+      document.querySelectorAll('.image-card-float-icon').forEach(el => el.remove());
+      
+      // 存储原始卡片位置信息
+      this.imageCardOriginalPositions = {};
+      
+      // 初始化自动隐藏定时器
+      this.floatPanelHideTimer = null;
+      this.currentFloatPanelNodeId = null;
+      
+      imageNodeIds.forEach((nodeId, index) => {
+        const cardEl = this.elements.configCards.querySelector(`.config-card[data-node-id="${nodeId}"]`);
+        if (!cardEl) return;
+        
+        const node = this.parsedNodes.find(n => n.id === nodeId);
+        if (!node) return;
+        
+        // 创建浮动图标
+        const icon = document.createElement('div');
+        icon.className = 'image-card-float-icon';
+        icon.dataset.nodeId = nodeId;
+        icon.style.top = (55 + index * 50) + 'px';
+        
+        // 获取卡片中的图片预览
+        const cardImg = cardEl.querySelector('.image-preview');
+        if (cardImg && cardImg.src) {
+          const iconImg = document.createElement('img');
+          iconImg.className = 'icon-img';
+          iconImg.src = cardImg.src;
+          icon.appendChild(iconImg);
+        } else {
+          // 没有图片时显示默认图标
+          const defaultIcon = document.createElement('span');
+          defaultIcon.style.cssText = 'font-size: 20px;';
+          defaultIcon.textContent = '🖼️';
+          icon.appendChild(defaultIcon);
+        }
+        
+        // 添加标签
+        const label = document.createElement('span');
+        label.className = 'icon-label';
+        label.textContent = node.title;
+        icon.appendChild(label);
+        
+        // 存储原始位置
+        this.imageCardOriginalPositions[nodeId] = {
+          parent: cardEl.parentElement,
+          nextSibling: cardEl.nextSibling
+        };
+        
+        // 鼠标移入显示浮动面板
+        icon.addEventListener('mouseenter', () => {
+          this.showImageCardFloatPanel(nodeId);
+        });
+        
+        previewContent.appendChild(icon);
+      });
+      
+      // 为浮动面板添加鼠标事件
+      this.elements.imageCardFloatPanel.addEventListener('mouseenter', () => {
+        // 鼠标进入浮动面板，取消隐藏定时器
+        if (this.floatPanelHideTimer) {
+          clearTimeout(this.floatPanelHideTimer);
+          this.floatPanelHideTimer = null;
+        }
+      });
+      
+      this.elements.imageCardFloatPanel.addEventListener('mouseleave', () => {
+        // 鼠标离开浮动面板，0.5秒后隐藏（如果未钉住）
+        this.startFloatPanelHideTimer();
+      });
+      
+      // 图钉按钮事件
+      this.floatPanelPinned = false;
+      this.elements.floatPanelPin.onclick = (e) => {
+        e.stopPropagation();
+        this.floatPanelPinned = !this.floatPanelPinned;
+        this.elements.floatPanelPin.classList.toggle('pinned', this.floatPanelPinned);
+        if (this.floatPanelPinned) {
+          // 钉住时取消隐藏定时器
+          if (this.floatPanelHideTimer) {
+            clearTimeout(this.floatPanelHideTimer);
+            this.floatPanelHideTimer = null;
+          }
+        }
+      };
+    }
+
+    // 显示图像卡片浮动面板
+    showImageCardFloatPanel(nodeId) {
+      const node = this.parsedNodes.find(n => n.id === nodeId);
+      if (!node) return;
+      
+      // 取消之前的隐藏定时器
+      if (this.floatPanelHideTimer) {
+        clearTimeout(this.floatPanelHideTimer);
+        this.floatPanelHideTimer = null;
+      }
+      
+      // 如果当前显示的是其他卡片，先将其移回
+      if (this.currentFloatPanelNodeId && this.currentFloatPanelNodeId !== nodeId) {
+        this.restoreCardToOriginalPosition(this.currentFloatPanelNodeId);
+      }
+      
+      // 更新标题
+      this.elements.floatPanelTitle.textContent = node.title;
+      
+      // 如果当前没有显示卡片或显示的是不同的卡片
+      if (this.currentFloatPanelNodeId !== nodeId) {
+        // 清空浮动面板内容
+        this.elements.floatPanelBody.innerHTML = '';
+        
+        // 获取原始卡片
+        const cardEl = this.elements.configCards.querySelector(`.config-card[data-node-id="${nodeId}"]`);
+        if (cardEl) {
+          // 移动卡片到浮动面板
+          this.elements.floatPanelBody.appendChild(cardEl);
+        }
+        
+        this.currentFloatPanelNodeId = nodeId;
+      }
+      
+      // 显示浮动面板
+      this.elements.imageCardFloatPanel.classList.add('visible');
+    }
+    
+    // 开始浮动面板隐藏定时器
+    startFloatPanelHideTimer() {
+      // 如果已钉住，不启动隐藏定时器
+      if (this.floatPanelPinned) return;
+      
+      if (this.floatPanelHideTimer) {
+        clearTimeout(this.floatPanelHideTimer);
+      }
+      this.floatPanelHideTimer = setTimeout(() => {
+        this.hideImageCardFloatPanel();
+      }, 500);
+    }
+
+    // 隐藏图像卡片浮动面板
+    hideImageCardFloatPanel() {
+      // 如果已钉住，不隐藏
+      if (this.floatPanelPinned) return;
+      
+      if (this.currentFloatPanelNodeId) {
+        this.restoreCardToOriginalPosition(this.currentFloatPanelNodeId);
+        this.currentFloatPanelNodeId = null;
+      }
+      
+      // 隐藏浮动面板
+      this.elements.imageCardFloatPanel.classList.remove('visible');
+    }
+    
+    // 将卡片恢复到原始位置
+    restoreCardToOriginalPosition(nodeId) {
+      const cardEl = this.elements.floatPanelBody.querySelector(`.config-card[data-node-id="${nodeId}"]`);
+      if (cardEl && this.imageCardOriginalPositions && this.imageCardOriginalPositions[nodeId]) {
+        const pos = this.imageCardOriginalPositions[nodeId];
+        if (pos.nextSibling) {
+          pos.parent.insertBefore(cardEl, pos.nextSibling);
+        } else {
+          pos.parent.appendChild(cardEl);
+        }
+      } else if (cardEl) {
+        // 如果没有存储位置，直接添加回 configCards
+        this.elements.configCards.appendChild(cardEl);
+      }
+    }
+
+    // 恢复所有图像卡片到原来的位置
+    restoreImageCards() {
+      if (!this.imageCardOriginalPositions) return;
+      
+      // 先处理浮动面板中的卡片
+      const floatPanelCards = this.elements.floatPanelBody.querySelectorAll('.config-card');
+      floatPanelCards.forEach(cardEl => {
+        const nodeId = cardEl.dataset.nodeId;
+        const pos = this.imageCardOriginalPositions[nodeId];
+        if (pos) {
+          if (pos.nextSibling) {
+            pos.parent.insertBefore(cardEl, pos.nextSibling);
+          } else {
+            pos.parent.appendChild(cardEl);
+          }
+        } else {
+          this.elements.configCards.appendChild(cardEl);
+        }
+      });
+      
+      // 清除浮动图标
+      document.querySelectorAll('.image-card-float-icon').forEach(el => el.remove());
+      
+      // 清除位置记录
+      this.imageCardOriginalPositions = null;
+    }
+
+    // 显示圆形进度指示器
+    showCircularProgress() {
+      this.elements.circularProgress.classList.add('visible');
+      this.updateCircularProgress(this.lastProgress.current, this.lastProgress.total);
+    }
+
+    // 隐藏圆形进度指示器
+    hideCircularProgress() {
+      this.elements.circularProgress.classList.remove('visible');
+    }
+
+    // 更新圆形进度指示器
+    updateCircularProgress(current, total) {
+      const progress = total > 0 ? (current / total) : 0;
+      const circumference = 2 * Math.PI * 25; // r=25
+      const offset = circumference * (1 - progress);
+      
+      const progressFill = this.elements.circularProgress.querySelector('.progress-fill');
+      if (progressFill) {
+        progressFill.style.strokeDashoffset = offset;
+      }
+      
+      if (this.elements.circularProgressText) {
+        this.elements.circularProgressText.textContent = Math.round(progress * 100) + '%';
       }
     }
 
@@ -7290,6 +7914,11 @@
       this.isExecuting = true;
       this.elements.statusDot?.classList.add('executing');
       this.lastDownloadedFile = null;
+      
+      // 如果右侧面板隐藏，显示圆形进度指示器
+      if (this.rightPanelHidden) {
+        this.showCircularProgress();
+      }
 
       if (this.previewUrl && this.previewUrl.startsWith('blob:')) {
         URL.revokeObjectURL(this.previewUrl);
@@ -7468,6 +8097,11 @@
       const percentage = total > 0 ? (current / total) * 100 : 0;
       this.elements.progressFill.style.width = percentage + '%';
       this.elements.progressText.textContent = `${current} / ${total}`;
+      
+      // 如果右侧面板隐藏，同时更新圆形进度指示器
+      if (this.rightPanelHidden) {
+        this.updateCircularProgress(current, total);
+      }
     }
 
     onImagesGenerated(images, nodeId) {
@@ -7672,6 +8306,8 @@
       this.videoCurrentFrame = 0;
       // 重置视频生成状态
       this.isVideoGeneration = false;
+      // 隐藏圆形进度指示器
+      this.hideCircularProgress();
       // 注意：不要在这里停止帧动画，因为可能需要继续播放预览
       // 如果有视频或图片结果，它们会各自处理
     }
