@@ -219,6 +219,10 @@
 
       // 提示词库相关
       this.promptLibrary = [];  // 提示词库列表 [{id, title, content}]
+      this.promptLibraryScrollPositions = {};  // 存储每个列表项对应的编辑框滚动位置 { index: scrollTop }
+      this.promptLibraryCursorPositions = {};  // 存储每个列表项对应的光标位置 { index: cursorPosition }
+      this.cardScrollPositions = {};  // 存储每个卡片对应的编辑框滚动位置 { cardKey: scrollTop }
+      this.cardCursorPositions = {};  // 存储每个卡片对应的光标位置 { cardKey: cursorPosition }
 
       // 上游节点连接设置
       this.inputLinkSettings = {};  // 存储用户配置的上游连接设置 { 'nodeId.inputKey': { enabled, linkNodeId, linkOutputIndex, defaultValue, defaultDataType } }
@@ -3863,6 +3867,24 @@
             <span class="loaded-badge">✓ 卡片</span>
           `;
         }
+        
+        // 恢复卡片的滚动位置和光标位置
+        const savedScrollTop = this.cardScrollPositions[this.currentHoveredCardKey];
+        const savedCursorPos = this.cardCursorPositions[this.currentHoveredCardKey];
+        
+        requestAnimationFrame(() => {
+          if (savedScrollTop !== undefined) {
+            this.elements.promptPreviewTextarea.scrollTop = savedScrollTop;
+            // 同步高亮层的滚动位置
+            if (this.elements.promptHighlightPre) {
+              this.elements.promptHighlightPre.scrollTop = savedScrollTop;
+            }
+          }
+          
+          if (savedCursorPos !== undefined) {
+            this.elements.promptPreviewTextarea.setSelectionRange(savedCursorPos, savedCursorPos);
+          }
+        });
       }
       // 如果上次选中的是提示词列表中的项目
       else if (this.currentPreviewPrompt && this.currentPreviewIndex >= 0) {
@@ -3885,6 +3907,24 @@
           <span class="card-name">${this.currentPreviewPrompt.title}</span>
           <span class="loaded-badge">✓ 提示词</span>
         `;
+        
+        // 恢复编辑框的滚动位置和光标位置
+        const savedScrollTop = this.promptLibraryScrollPositions[this.currentPreviewIndex];
+        const savedCursorPos = this.promptLibraryCursorPositions[this.currentPreviewIndex];
+        
+        requestAnimationFrame(() => {
+          if (savedScrollTop !== undefined) {
+            this.elements.promptPreviewTextarea.scrollTop = savedScrollTop;
+            // 同步高亮层的滚动位置
+            if (this.elements.promptHighlightPre) {
+              this.elements.promptHighlightPre.scrollTop = savedScrollTop;
+            }
+          }
+          
+          if (savedCursorPos !== undefined) {
+            this.elements.promptPreviewTextarea.setSelectionRange(savedCursorPos, savedCursorPos);
+          }
+        });
       }
     }
 
@@ -4062,6 +4102,19 @@
 
     // 加载卡片内容到提示词编辑框
     loadCardToPromptEditor(cardFullKey, cardTitle) {
+      const textarea = this.elements.promptPreviewTextarea;
+      
+      // 在切换前，保存当前的滚动位置和光标位置
+      if (this.currentPreviewIndex >= 0) {
+        // 当前是提示词列表项，保存到提示词位置存储
+        this.promptLibraryScrollPositions[this.currentPreviewIndex] = textarea.scrollTop;
+        this.promptLibraryCursorPositions[this.currentPreviewIndex] = textarea.selectionStart;
+      } else if (this.currentHoveredCardKey && this.currentHoveredCardKey !== cardFullKey) {
+        // 当前是卡片，保存到卡片位置存储
+        this.cardScrollPositions[this.currentHoveredCardKey] = textarea.scrollTop;
+        this.cardCursorPositions[this.currentHoveredCardKey] = textarea.selectionStart;
+      }
+      
       // 如果有未保存的提示词编辑，先自动保存
       if (this.previewUnsaved && this.currentPreviewIndex >= 0 && this.currentPreviewPrompt) {
         this.autoSavePromptLibrary();
@@ -4084,6 +4137,30 @@
       if (this.elements.promptHighlightPre) {
         this.renderTextareaHighlight(this.elements.promptHighlightPre, content);
       }
+
+      // 恢复该卡片对应的滚动位置和光标位置
+      const savedScrollTop = this.cardScrollPositions[cardFullKey];
+      const savedCursorPos = this.cardCursorPositions[cardFullKey];
+      
+      requestAnimationFrame(() => {
+        if (savedScrollTop !== undefined) {
+          this.elements.promptPreviewTextarea.scrollTop = savedScrollTop;
+          // 同步高亮层的滚动位置
+          if (this.elements.promptHighlightPre) {
+            this.elements.promptHighlightPre.scrollTop = savedScrollTop;
+          }
+        } else {
+          // 如果没有保存的滚动位置，滚动到顶部
+          this.elements.promptPreviewTextarea.scrollTop = 0;
+          if (this.elements.promptHighlightPre) {
+            this.elements.promptHighlightPre.scrollTop = 0;
+          }
+        }
+        
+        if (savedCursorPos !== undefined) {
+          this.elements.promptPreviewTextarea.setSelectionRange(savedCursorPos, savedCursorPos);
+        }
+      });
 
       // 更新标题
       const cardId = cardFullKey.split('.')[0];
@@ -4279,6 +4356,19 @@
 
     // 预览提示词
     previewPrompt(prompt, index) {
+      const textarea = this.elements.promptPreviewTextarea;
+      
+      // 在切换前，保存当前的滚动位置和光标位置
+      if (this.currentPreviewIndex >= 0 && this.currentPreviewIndex !== index) {
+        // 当前是提示词列表项，保存到提示词位置存储
+        this.promptLibraryScrollPositions[this.currentPreviewIndex] = textarea.scrollTop;
+        this.promptLibraryCursorPositions[this.currentPreviewIndex] = textarea.selectionStart;
+      } else if (this.currentHoveredCardKey) {
+        // 当前是卡片，保存到卡片位置存储
+        this.cardScrollPositions[this.currentHoveredCardKey] = textarea.scrollTop;
+        this.cardCursorPositions[this.currentHoveredCardKey] = textarea.selectionStart;
+      }
+
       this.currentPreviewPrompt = prompt;
       this.currentPreviewIndex = index;
       this.previewUnsaved = false;
@@ -4292,6 +4382,31 @@
       if (this.elements.promptHighlightPre) {
         this.renderTextareaHighlight(this.elements.promptHighlightPre, prompt.content);
       }
+
+      // 恢复该列表项对应的滚动位置和光标位置
+      const savedScrollTop = this.promptLibraryScrollPositions[index];
+      const savedCursorPos = this.promptLibraryCursorPositions[index];
+      
+      // 使用 requestAnimationFrame 确保在内容更新后再恢复滚动位置
+      requestAnimationFrame(() => {
+        if (savedScrollTop !== undefined) {
+          this.elements.promptPreviewTextarea.scrollTop = savedScrollTop;
+          // 同步高亮层的滚动位置
+          if (this.elements.promptHighlightPre) {
+            this.elements.promptHighlightPre.scrollTop = savedScrollTop;
+          }
+        } else {
+          // 如果没有保存的滚动位置，滚动到顶部
+          this.elements.promptPreviewTextarea.scrollTop = 0;
+          if (this.elements.promptHighlightPre) {
+            this.elements.promptHighlightPre.scrollTop = 0;
+          }
+        }
+        
+        if (savedCursorPos !== undefined) {
+          this.elements.promptPreviewTextarea.setSelectionRange(savedCursorPos, savedCursorPos);
+        }
+      });
 
       // 更新标题 - 显示提示词模式
       const cardId = prompt.id.split('.')[0];
@@ -4642,6 +4757,25 @@
     // 删除提示词
     async deletePrompt(index) {
       this.promptLibrary.splice(index, 1);
+      
+      // 调整滚动位置存储：删除当前索引，后面的索引前移
+      delete this.promptLibraryScrollPositions[index];
+      delete this.promptLibraryCursorPositions[index];
+      const newScrollPositions = {};
+      const newCursorPositions = {};
+      for (const key in this.promptLibraryScrollPositions) {
+        const keyNum = parseInt(key);
+        if (keyNum > index) {
+          newScrollPositions[keyNum - 1] = this.promptLibraryScrollPositions[key];
+          newCursorPositions[keyNum - 1] = this.promptLibraryCursorPositions[key];
+        } else if (keyNum < index) {
+          newScrollPositions[keyNum] = this.promptLibraryScrollPositions[key];
+          newCursorPositions[keyNum] = this.promptLibraryCursorPositions[key];
+        }
+      }
+      this.promptLibraryScrollPositions = newScrollPositions;
+      this.promptLibraryCursorPositions = newCursorPositions;
+      
       await this.savePromptLibraryConfig();
       this.renderPromptLibraryList();
       // 清空预览
