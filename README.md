@@ -76,12 +76,14 @@ ComfyUI 确实是一个非常强大的工具，但它的原生交互体验实在
 
 **更新日志:**
 
+260315: 修复了已经发现的bug, 增加了很多提升使用体验的改进,
+
 260313: 修复了提示词编辑框文本错位的问题, 一些增强使用体验的小改进,
         增加了独立模式,打开comfyui_panel.html可以连接安装了这个插件的comfyui, 体验秒开前端的感觉.
 
 
-📄 **开源协议 | License**
-Copyright © 2026 [@灰暗x](https://space.bilibili.com/26779709)
+📄 **开源协议 | License
+Copyright © 2026 [@灰暗x](https://space.bilibili.com/26779709)**
 
 本项目采用 GNU Affero General Public License v3.0 (AGPLv3) 协议开源。
 
