@@ -3170,8 +3170,19 @@
       // 提示词库编辑框滚动同步
       this.elements.promptPreviewTextarea.addEventListener('scroll', () => {
         if (this.elements.promptHighlightPre) {
-          this.elements.promptHighlightPre.scrollTop = this.elements.promptPreviewTextarea.scrollTop;
-          this.elements.promptHighlightPre.scrollLeft = this.elements.promptPreviewTextarea.scrollLeft;
+          const textarea = this.elements.promptPreviewTextarea;
+          const highlight = this.elements.promptHighlightPre;
+          
+          // 计算高亮层的最大可滚动距离
+          const maxScrollTop = Math.max(0, highlight.scrollHeight - highlight.clientHeight);
+          const maxScrollLeft = Math.max(0, highlight.scrollWidth - highlight.clientWidth);
+          
+          // 限制滚动范围，防止超出边界
+          const newScrollTop = Math.min(textarea.scrollTop, maxScrollTop);
+          const newScrollLeft = Math.min(textarea.scrollLeft, maxScrollLeft);
+          
+          highlight.scrollTop = newScrollTop;
+          highlight.scrollLeft = newScrollLeft;
         }
       });
       // 提示词库编辑框双击注释功能
@@ -7803,6 +7814,23 @@
 
       highlightEl.innerHTML = '';
       highlightEl.appendChild(fragment);
+      
+      // 如果文本末尾有换行符，需要在高亮层也添加，以保持滚动高度一致
+      // textarea 会保留末尾换行符产生的额外高度，高亮层也需要同步
+      // 计算末尾连续换行符的数量
+      let trailingNewlines = 0;
+      for (let i = text.length - 1; i >= 0; i--) {
+        if (text[i] === '\n') {
+          trailingNewlines++;
+        } else {
+          break;
+        }
+      }
+      // 添加与末尾换行符数量相同的换行（减去已在循环中添加的）
+      // 循环中已经处理了行间换行，所以只需确保末尾有足够的换行
+      for (let i = 0; i < trailingNewlines; i++) {
+        highlightEl.appendChild(document.createTextNode('\n'));
+      }
     }
 
     /**
