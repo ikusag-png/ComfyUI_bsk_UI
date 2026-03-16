@@ -219,6 +219,10 @@
 
       // 提示词库相关
       this.promptLibrary = [];  // 提示词库列表 [{id, title, content}]
+      this.promptLibraryScrollPositions = {};  // 存储每个列表项对应的编辑框滚动位置 { index: scrollTop }
+      this.promptLibraryCursorPositions = {};  // 存储每个列表项对应的光标位置 { index: cursorPosition }
+      this.cardScrollPositions = {};  // 存储每个卡片对应的编辑框滚动位置 { cardKey: scrollTop }
+      this.cardCursorPositions = {};  // 存储每个卡片对应的光标位置 { cardKey: cursorPosition }
 
       // 上游节点连接设置
       this.inputLinkSettings = {};  // 存储用户配置的上游连接设置 { 'nodeId.inputKey': { enabled, linkNodeId, linkOutputIndex, defaultValue, defaultDataType } }
@@ -232,6 +236,9 @@
       
       // 禁用连接时的替代值设置
       this.inputDisabledValues = {};
+      
+      // 删除按钮倒计时状态 { 'filename': { countdown, timerId } }
+      this.deleteCountdownState = {};
       
       // 常用节点输入数据类型字典
       // 格式: { 'class_type': { 'input_name': 'data_type' } }
@@ -1057,6 +1064,8 @@
           border-radius: 8px;
         }
         .previous-result-thumb .thumb-image {
+          width: auto;
+          height: auto;
           max-width: 100%;
           max-height: 100%;
           object-fit: contain;
@@ -1070,9 +1079,11 @@
           position: absolute;
           top: 0;
           left: 0;
-          transform: none;
+          width: auto;
+          height: auto;
           max-width: none;
           max-height: none;
+          transform-origin: 0 0;
         }
         .previous-result-thumb .thumb-download-indicator {
           position: absolute;
@@ -1088,8 +1099,11 @@
           font-size: 12px;
           transition: all 0.2s;
         }
+        .previous-result-thumb.expanded .thumb-download-indicator {
+          display: none;
+        }
         .previous-result-thumb .thumb-download-indicator::after {
-          content: '⬇';
+          content: '📥︎';
           color: #fbbf24;
         }
         .previous-result-thumb.downloaded .thumb-download-indicator::after {
@@ -1118,6 +1132,44 @@
         }
         .previous-result-thumb.mini.downloaded .thumb-download-indicator::after {
           font-size: 7px;
+        }
+
+        /* 展开状态下的操作按钮 */
+        .thumb-expanded-actions {
+          display: none;
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          gap: 8px;
+          z-index: 100;
+        }
+        .previous-result-thumb.expanded .thumb-expanded-actions {
+          display: flex;
+        }
+        .thumb-action-btn {
+          width: 44px;
+          height: 44px;
+          border-radius: 8px;
+          border: none;
+          background: rgba(0, 0, 0, 0.7);
+          color: white;
+          font-size: 20px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+          backdrop-filter: blur(4px);
+        }
+        .thumb-action-btn:hover {
+          background: rgba(102, 126, 234, 0.8);
+          transform: scale(1.1);
+        }
+        .thumb-download-btn:hover {
+          background: rgba(34, 197, 94, 0.8);
+        }
+        .thumb-copy-btn:hover {
+          background: rgba(59, 130, 246, 0.8);
         }
 
         /* 加载图像卡片浮动面板 - 小图标模式 */
@@ -2551,6 +2603,822 @@
         ::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.02); }
         ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 2px; }
         ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.25); }
+
+        /* 配置选择浮动窗口 */
+        #config-selector-overlay {
+          display: none;
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.6);
+          z-index: 10002;
+          backdrop-filter: blur(4px);
+        }
+        #config-selector-overlay.visible { display: flex; }
+        
+        .config-selector-container {
+          display: flex;
+          width: 90%;
+          max-width: 1400px;
+          height: 85%;
+          max-height: 800px;
+          background: rgba(40, 45, 55, 0.75);
+          border-radius: 16px;
+          overflow: hidden;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+        }
+        
+        .config-selector-sidebar {
+          width: 200px;
+          min-width: 200px;
+          background: rgba(0, 0, 0, 0.25);
+          border-right: 1px solid rgba(255, 255, 255, 0.12);
+          display: flex;
+          flex-direction: column;
+        }
+        
+        .config-selector-sidebar-header {
+          padding: 16px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        
+        .config-selector-sidebar-title {
+          color: white;
+          font-size: 16px;
+          font-weight: 600;
+        }
+        
+        .config-selector-sidebar-add {
+          width: 28px;
+          height: 28px;
+          border-radius: 6px;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          background: rgba(255, 255, 255, 0.1);
+          color: white;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 18px;
+          transition: all 0.2s;
+        }
+        
+        .config-selector-sidebar-add:hover {
+          background: rgba(255, 255, 255, 0.2);
+          border-color: rgba(255, 255, 255, 0.3);
+        }
+        
+        .config-selector-categories {
+          flex: 1;
+          overflow-y: auto;
+          padding: 8px;
+        }
+        
+        .config-selector-category {
+          padding: 10px 12px;
+          border-radius: 8px;
+          cursor: pointer;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 4px;
+          transition: all 0.2s;
+          border: 1px solid transparent;
+        }
+        
+        .config-selector-category:hover {
+          background: rgba(255, 255, 255, 0.08);
+          border-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        .config-selector-category.active {
+          background: rgba(102, 126, 234, 0.25);
+          border-color: rgba(102, 126, 234, 0.4);
+        }
+        
+        .config-selector-category-name {
+          color: rgba(255, 255, 255, 0.9);
+          font-size: 14px;
+        }
+        
+        .config-selector-category-count {
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 12px;
+          background: rgba(255, 255, 255, 0.1);
+          padding: 2px 8px;
+          border-radius: 10px;
+        }
+        
+        .config-selector-category-actions {
+          display: none;
+          gap: 4px;
+        }
+        
+        .config-selector-category:hover .config-selector-category-actions {
+          display: flex;
+        }
+        
+        .config-selector-category-btn {
+          width: 24px;
+          height: 24px;
+          border-radius: 4px;
+          border: none;
+          background: rgba(255, 255, 255, 0.1);
+          color: rgba(255, 255, 255, 0.7);
+          cursor: pointer;
+          font-size: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+        }
+        
+        .config-selector-category-btn:hover {
+          background: rgba(255, 100, 100, 0.3);
+          color: white;
+        }
+        
+        .config-selector-main {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        
+        .config-selector-header {
+          padding: 16px 20px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        
+        .config-selector-title {
+          color: white;
+          font-size: 18px;
+          font-weight: 600;
+        }
+        
+        .config-selector-close {
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          background: rgba(255, 255, 255, 0.08);
+          color: white;
+          cursor: pointer;
+          font-size: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+        }
+        
+        .config-selector-close:hover {
+          background: rgba(255, 100, 100, 0.3);
+          border-color: rgba(255, 100, 100, 0.4);
+        }
+        
+        .config-selector-toolbar {
+          padding: 12px 20px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+          display: flex;
+          gap: 12px;
+          align-items: center;
+        }
+        
+        .config-selector-search {
+          flex: 1;
+          padding: 8px 14px;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 8px;
+          color: white;
+          font-size: 14px;
+          outline: none;
+        }
+        
+        .config-selector-search:focus {
+          border-color: rgba(102, 126, 234, 0.5);
+          background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .config-selector-search::placeholder {
+          color: rgba(255, 255, 255, 0.4);
+        }
+        
+        .config-selector-actions {
+          display: flex;
+          gap: 8px;
+        }
+        
+        .config-selector-action-btn {
+          padding: 8px 16px;
+          border-radius: 6px;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          background: rgba(255, 255, 255, 0.08);
+          color: white;
+          cursor: pointer;
+          font-size: 13px;
+          transition: all 0.2s;
+        }
+        
+        .config-selector-action-btn:hover {
+          background: rgba(255, 255, 255, 0.15);
+          border-color: rgba(255, 255, 255, 0.25);
+        }
+        
+        .config-selector-action-btn.primary {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          border-color: transparent;
+        }
+        
+        .config-selector-action-btn.primary:hover {
+          opacity: 0.9;
+        }
+        
+        .config-selector-content {
+          flex: 1;
+          overflow-y: auto;
+          padding: 16px;
+        }
+        
+        .config-selector-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+          gap: 12px;
+        }
+        
+        .config-item {
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 8px;
+          overflow: hidden;
+          cursor: pointer;
+          transition: all 0.2s;
+          position: relative;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .config-item:hover {
+          background: rgba(255, 255, 255, 0.1);
+          border-color: rgba(255, 255, 255, 0.2);
+          transform: translateY(-2px);
+          box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+        }
+        
+        .config-item.selected {
+          outline: 2px solid #667eea;
+          border-color: rgba(102, 126, 234, 0.5);
+        }
+        
+        .config-item-thumbnail {
+          width: 100%;
+          aspect-ratio: 9/16;
+          background: rgba(0, 0, 0, 0.3);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          position: relative;
+        }
+        
+        .config-item-thumbnail img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        
+        .config-item-thumbnail .placeholder-icon {
+          font-size: 42px;
+          color: rgba(255, 255, 255, 0.2);
+        }
+        
+        /* 信息区域覆盖在图片底部 */
+        .config-item-info {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          padding: 10px 8px;
+          background: linear-gradient(to top, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0.4) 60%, transparent 100%);
+        }
+        
+        .config-item-name {
+          color: white;
+          font-size: 12px;
+          font-weight: 500;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8), 0 0 1px rgba(0, 0, 0, 1);
+          -webkit-text-stroke: 0.3px rgba(0, 0, 0, 0.5);
+        }
+        
+        .config-item-meta {
+          color: rgba(255, 255, 255, 0.7);
+          font-size: 10px;
+          margin-top: 2px;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+        }
+        
+        /* 操作按钮覆盖在图片底部，信息区域上方 */
+        .config-item-actions {
+          position: absolute;
+          bottom: 50px;
+          left: 0;
+          right: 0;
+          padding: 8px;
+          display: none;
+          gap: 4px;
+          background: transparent;
+        }
+        
+        .config-item:hover .config-item-actions {
+          display: flex;
+        }
+        
+        /* 右上角圆形删除按钮 */
+        .config-item-delete-btn {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          width: 26px;
+          height: 26px;
+          border-radius: 50%;
+          border: none;
+          background: rgba(239, 68, 68, 0.85);
+          color: white;
+          cursor: pointer;
+          display: none;
+          align-items: center;
+          justify-content: center;
+          font-size: 14px;
+          font-weight: bold;
+          transition: all 0.2s;
+          z-index: 10;
+          box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
+        }
+        
+        .config-item:hover .config-item-delete-btn {
+          display: flex;
+        }
+        
+        .config-item-delete-btn:hover {
+          background: rgba(220, 38, 38, 1);
+          transform: scale(1.1);
+          box-shadow: 0 4px 12px rgba(239, 68, 68, 0.6);
+        }
+        
+        /* 删除按钮倒计时状态 */
+        .config-item-delete-btn.countdown {
+          background: rgba(34, 197, 94, 0.9);
+          box-shadow: 0 2px 8px rgba(34, 197, 94, 0.4);
+          font-size: 12px;
+        }
+        
+        .config-item-delete-btn.countdown:hover {
+          background: rgba(22, 163, 74, 1);
+          box-shadow: 0 4px 12px rgba(34, 197, 94, 0.6);
+        }
+        
+        .config-item-btn {
+          flex: 1;
+          padding: 6px 4px;
+          border-radius: 4px;
+          border: 1px solid rgba(255, 255, 255, 0.25);
+          background: rgba(0, 0, 0, 0.5);
+          color: white;
+          cursor: pointer;
+          font-size: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+          transition: all 0.2s;
+          backdrop-filter: blur(4px);
+        }
+        
+        .config-item-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+          transform: scale(1.05);
+        }
+        
+        .config-item-btn.overwrite-btn:hover {
+          background: rgba(102, 126, 234, 0.6);
+          border-color: rgba(102, 126, 234, 0.8);
+        }
+        
+        .config-item-btn.download-btn:hover {
+          background: rgba(34, 197, 94, 0.6);
+          border-color: rgba(34, 197, 94, 0.8);
+        }
+        
+        .config-item-btn.paste-btn:hover {
+          background: rgba(168, 85, 247, 0.6);
+          border-color: rgba(168, 85, 247, 0.8);
+        }
+        
+        .config-item-type {
+          position: absolute;
+          top: 8px;
+          left: 8px;
+          padding: 2px 6px;
+          border-radius: 3px;
+          font-size: 9px;
+          font-weight: 600;
+          text-transform: uppercase;
+          z-index: 5;
+        }
+        
+        .config-item-type.json {
+          background: rgba(59, 130, 246, 0.85);
+        }
+        
+        .config-item-type.png {
+          background: rgba(34, 197, 94, 0.85);
+        }
+        
+        .config-selector-empty {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100%;
+          color: rgba(255, 255, 255, 0.4);
+          padding: 40px;
+          text-align: center;
+        }
+        
+        .config-selector-empty-icon {
+          font-size: 48px;
+          margin-bottom: 16px;
+        }
+        
+        .config-selector-empty-text {
+          font-size: 16px;
+        }
+        
+        /* 设置面板新样式 */
+        .config-preview-card {
+          display: flex;
+          gap: 12px;
+          padding: 12px;
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          margin-bottom: 12px;
+          align-items: flex-end;
+        }
+        
+        .config-preview-thumb {
+          width: 64px;
+          height: 64px;
+          min-width: 64px;
+          background: rgba(0, 0, 0, 0.3);
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+        }
+        
+        .config-preview-placeholder {
+          font-size: 28px;
+          color: rgba(255, 255, 255, 0.3);
+        }
+        
+        .config-preview-info {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          gap: 8px;
+          min-width: 0;
+        }
+        
+        .config-preview-name {
+          color: white;
+          font-size: 13px;
+          font-weight: 500;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        
+        .config-preview-actions {
+          display: flex;
+          gap: 6px;
+        }
+        
+        .glass-btn-sm {
+          width: 72px;
+          height: 72px;
+          border-radius: 6px;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          background: rgba(255, 255, 255, 0.08);
+          color: white;
+          cursor: pointer;
+          font-size: 34px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+          backdrop-filter: blur(10px);
+        }
+        
+        .glass-btn-sm:hover {
+          background: rgba(255, 255, 255, 0.15);
+          border-color: rgba(255, 255, 255, 0.25);
+          transform: translateY(-1px);
+        }
+        
+        .glass-btn-sm:active {
+          transform: translateY(0);
+        }
+        
+        .glass-btn {
+          width: 36px;
+          height: 36px;
+          border-radius: 8px;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          background: rgba(255, 255, 255, 0.08);
+          color: white;
+          cursor: pointer;
+          font-size: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+          backdrop-filter: blur(10px);
+        }
+        
+        .glass-btn:hover {
+          background: rgba(255, 255, 255, 0.15);
+          border-color: rgba(255, 255, 255, 0.25);
+          transform: translateY(-1px);
+        }
+        
+        .glass-btn:active {
+          transform: translateY(0);
+        }
+
+        .quick-actions-grid {
+          display: flex;
+          gap: 12px;
+          padding: 12px;
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          margin-bottom: 12px;
+          align-items: flex-end;
+        }
+        
+        .glass-btn-lg {
+          aspect-ratio: 1;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          background: rgba(255, 255, 255, 0.06);
+          color: white;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+          backdrop-filter: blur(10px);
+        }
+        
+        .glass-btn-lg:hover {
+          background: rgba(255, 255, 255, 0.12);
+          border-color: rgba(255, 255, 255, 0.2);
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        
+        .glass-btn-lg:active {
+          transform: translateY(0);
+        }
+        
+        .glass-btn-lg .btn-icon {
+          font-size: 34px;
+        }
+        
+        /* 添加标签区域 */
+        .add-tab-section {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          margin-top: 8px;
+        }
+        
+        .add-tab-label {
+          font-size: 12px;
+          color: rgba(255, 255, 255, 0.6);
+          font-weight: 500;
+        }
+        
+        .add-tab-input-row {
+          display: flex;
+          gap: 8px;
+        }
+        
+        .add-tab-input-row .form-input {
+          flex: 1;
+          padding: 8px 12px;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 8px;
+          color: white;
+          font-size: 13px;
+        }
+        
+        .add-tab-input-row .form-input:focus {
+          outline: none;
+          border-color: rgba(102, 126, 234, 0.5);
+        }
+        
+        .add-tab-row {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+        
+        .add-tab-row .form-input {
+          flex: 1;
+          padding: 8px 12px;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 8px;
+          color: white;
+          font-size: 13px;
+        }
+        
+        .add-tab-row .form-input:focus {
+          outline: none;
+          border-color: rgba(102, 126, 234, 0.5);
+        }
+        
+        .shortcuts-details {
+          background: rgba(255, 255, 255, 0.03);
+          border-radius: 8px;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        
+        .shortcuts-details summary {
+          padding: 10px 12px;
+          cursor: pointer;
+          color: rgba(255, 255, 255, 0.7);
+          font-size: 13px;
+          user-select: none;
+        }
+        
+        .shortcuts-details summary:hover {
+          color: white;
+        }
+        
+        .shortcuts-details[open] summary {
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          margin-bottom: 8px;
+        }
+        
+        .shortcuts-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 4px 12px;
+          padding: 0 12px 10px;
+        }
+        
+        .shortcut-item {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 23px;
+          color: rgba(255, 255, 255, 0.6);
+        }
+        
+        .shortcut-item kbd {
+          background: rgba(255, 255, 255, 0.1);
+          padding: 2px 6px;
+          border-radius: 4px;
+          font-size: 23px;
+          font-family: inherit;
+          color: #6ee7b7;
+        }
+        
+        /* 快捷键说明 - 不折叠 */
+        .shortcuts-section-inline {
+          background: rgba(255, 255, 255, 0.03);
+          border-radius: 8px;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          padding: 10px 12px;
+          margin-bottom: 12px;
+        }
+        
+        .shortcuts-title {
+          color: rgba(255, 255, 255, 0.7);
+          font-size: 13px;
+          margin-bottom: 8px;
+        }
+        
+        /* 设置链接 */
+        .settings-links {
+          display: flex;
+          justify-content: center;
+          gap: 16px;
+          padding-top: 8px;
+        }
+        
+        .settings-link {
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: rgba(255, 255, 255, 0.5);
+          transition: color 0.2s;
+        }
+        
+        .settings-link:hover {
+          color: white;
+        }
+        
+        .settings-link .link-icon {
+          width: 24px;
+          height: 24px;
+        }
+        
+        /* 新建分类对话框 */
+        .new-category-dialog {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.7);
+          z-index: 10003;
+          display: none;
+          align-items: center;
+          justify-content: center;
+        }
+        
+        .new-category-dialog.visible { display: flex; }
+        
+        .new-category-dialog-content {
+          background: rgba(40, 40, 45, 0.98);
+          border-radius: 12px;
+          padding: 24px;
+          width: 320px;
+        }
+        
+        .new-category-dialog-title {
+          color: white;
+          font-size: 16px;
+          font-weight: 600;
+          margin-bottom: 16px;
+        }
+        
+        .new-category-dialog-input {
+          width: 100%;
+          padding: 10px 14px;
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 8px;
+          color: white;
+          font-size: 14px;
+          margin-bottom: 16px;
+          box-sizing: border-box;
+        }
+        
+        .new-category-dialog-buttons {
+          display: flex;
+          gap: 8px;
+          justify-content: flex-end;
+        }
+        
+        .new-category-dialog-btn {
+          padding: 8px 16px;
+          border-radius: 6px;
+          border: none;
+          cursor: pointer;
+          font-size: 14px;
+          transition: all 0.2s;
+        }
+        
+        .new-category-dialog-btn.cancel {
+          background: rgba(255, 255, 255, 0.1);
+          color: white;
+        }
+        
+        .new-category-dialog-btn.confirm {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+        }
       `;
       document.head.appendChild(style);
     }
@@ -2636,6 +3504,11 @@
               <div class="previous-result-thumb" id="previous-result-thumb" style="display:none">
                 <img class="thumb-image" id="thumb-image">
                 <div class="thumb-download-indicator" id="thumb-download-indicator"></div>
+                <!-- 展开状态下的操作按钮 -->
+                <div class="thumb-expanded-actions" id="thumb-expanded-actions">
+                  <button class="thumb-action-btn thumb-download-btn" id="thumb-download-btn" title="下载">📥︎</button>
+                  <button class="thumb-action-btn thumb-copy-btn" id="thumb-copy-btn" title="复制">📋</button>
+                </div>
               </div>
 
               <!-- 圆形进度指示器（Tab隐藏右侧面板时显示） -->
@@ -2836,73 +3709,69 @@
 
             <!-- 主设置面板 -->
             <div class="theme-panel" id="main-settings-panel">
-              <div class="theme-header">⚙️ 设置面板</div>
-              <div class="theme-content">
-                <div class="form-group">
-                  <label class="form-label">上传 API 工作流</label>
-                  <input type="file" id="workflow-file" accept=".json" style="display:none">
-                  <div style="display: flex; gap: 8px;">
-                    <button class="panel-btn panel-btn-secondary" id="upload-workflow-btn" style="flex: 1;">📁 选择文件</button>
-                    <button class="panel-btn panel-btn-warning" id="reboot-btn" title="重启 ComfyUI (需要安装 ComfyUI Manager)">🔄 重启</button>
+              <div class="theme-header">⚙️ 设置</div>
+              <div class="theme-content" style="padding: 12px;">
+                
+                <!-- 服务器配置区域 -->
+                <div class="config-preview-card" id="config-preview-card">
+                  <div class="config-preview-thumb" id="config-preview-thumb">
+                    <span class="config-preview-placeholder" id="config-preview-placeholder">📄</span>
+                    <img id="config-preview-image" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:8px;">
                   </div>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">服务器配置</label>
-                  <select class="toolbar-select" id="server-config-select" style="width: 100%;">
-                    <option value="">-- 选择配置 --</option>
-                  </select>
-                </div>
-                <div style="display: flex; gap: 8px;">
-                  <button class="panel-btn panel-btn-secondary" id="load-config-btn" style="flex: 1;">📂 加载</button>
-                  <button class="panel-btn panel-btn-secondary" id="save-config-btn" style="flex: 1;">💾 保存</button>
-                  <button class="panel-btn panel-btn-secondary" id="save-as-btn" style="flex: 1;">📄 另存</button>
-                </div>
-                <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 16px 0;">
-                <button class="panel-btn panel-btn-secondary" id="gallery-btn" style="width: 100%;">🖼️ 打开图库</button>
-                <button class="panel-btn panel-btn-secondary" id="theme-btn" style="width: 100%; margin-top: 8px;">🎨 主题编辑</button>
-                <div style="display: flex; gap: 8px; margin-top: 8px;">
-                  <input type="text" class="form-input" id="new-tab-name" placeholder="新标签名称" style="flex: 1;">
-                  <button class="panel-btn panel-btn-secondary" id="add-tab-btn">添加</button>
-                </div>
-                
-                <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 16px 0;">
-                
-                <div class="shortcuts-section">
-                  <label class="form-label">快捷键说明</label>
-                  <div class="shortcuts-list" style="font-size: 18px; color: rgba(255,255,255,0.8); line-height: 1.8;">
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                      <span><strong style="color: #6ee7b7;">G</strong> 生成</span>
-                      <span><strong style="color: #6ee7b7;">F</strong> 下载当前图片</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                      <span><strong style="color: #6ee7b7;">C</strong> 复制当前图片</span>
-                      <span><strong style="color: #6ee7b7;">V</strong> 粘贴图片</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                      <span><strong style="color: #6ee7b7;">B</strong> 提示词库</span>
-                      <span><strong style="color: #6ee7b7;">ESC</strong> 关闭面板</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                      <span><strong style="color: #6ee7b7;">Ctrl+Enter</strong> 生成</span>
-                      <span><strong style="color: #6ee7b7;">Z/X</strong> 图库切换</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                      <span><strong style="color: #6ee7b7;">Ctrl+双击</strong> 注释/取消注释</span>
-                      <span><strong style="color: #6ee7b7;">双击</strong> 选词</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                      <span><strong style="color: #6ee7b7;">Ctrl+S</strong> 提示词库覆盖保存</span>
-                      <span><strong style="color: #6ee7b7;">Ctrl+/</strong> 注释当前行</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                      <span><strong style="color: #6ee7b7;">TAB</strong> 隐藏/显示右面板</span>
-                    </div>
-                    <div style="padding: 4px 0; margin-top: 8px; color: rgba(255,255,255,0.5); font-size: 11px;">
-                      <span>提示词高亮：<span style="color: #2d8a4e;">深绿色</span>=注释，<span style="color: #c9444d;">深红色</span>=有权重</span>
+                  <div class="config-preview-info">
+                    <div class="config-preview-name" id="config-preview-name">未加载配置</div>
+                    <div class="config-preview-actions">
+                      <button class="glass-btn-sm" id="select-config-btn" title="服务器配置">☁️</button>
+                      <button class="glass-btn-sm" id="load-local-config-btn" title="本地配置">📂</button>
+                      <button class="glass-btn-lg" id="upload-workflow-btn" title="上传工作流">
+                        <span class="btn-icon">📤</span>
+                      </button>
+                      <button class="glass-btn-sm" id="download-workflow-btn" title="下载工作流">📥︎</button>
                     </div>
                   </div>
                 </div>
+                
+                <!-- 快捷按钮网格 -->
+                <div class="quick-actions-grid">
+                  <button class="glass-btn-lg" id="gallery-btn" title="图库">
+                    <span class="btn-icon">🖼️</span>
+                  </button>
+                  <button class="glass-btn-lg" id="theme-btn" title="主题">
+                    <span class="btn-icon">🎨</span>
+                  </button>
+                  <button class="glass-btn-lg" id="reboot-btn" title="重启">
+                    <span class="btn-icon">🔄</span>
+                  </button>
+                  <div class="add-tab-section">
+                    <div class="add-tab-label">添加标签</div>
+                    <div class="add-tab-input-row">
+                      <input type="text" class="form-input" id="new-tab-name" placeholder="新标签名称">
+                      <button class="glass-btn" id="add-tab-btn" title="添加标签">+</button>
+                    </div>
+                  </div>
 
+                </div>
+                
+                <input type="file" id="workflow-file" accept=".json" style="display:none">
+                
+                <!-- 快捷键说明 - 不折叠 -->
+                <div class="shortcuts-section-inline">
+                  <div class="shortcuts-title">⌨️ 快捷键</div>
+                  <div class="shortcuts-grid">
+                    <div class="shortcut-item"><kbd>G</kbd> 生成</div>
+                    <div class="shortcut-item"><kbd>F</kbd> 下载</div>
+                    <div class="shortcut-item"><kbd>C</kbd> 复制</div>
+                    <div class="shortcut-item"><kbd>V</kbd> 粘贴</div>
+                    <div class="shortcut-item"><kbd>B</kbd> 词库</div>
+                    <div class="shortcut-item"><kbd>ESC</kbd> 关闭</div>
+                    <div class="shortcut-item"><kbd>TAB</kbd> 全屏</div>
+                    <div class="shortcut-item"><kbd>Z/X</kbd> 切换</div>
+                    <div class="shortcut-item"><kbd>Ctrl+/</kbd> 注释</div>
+                    <div class="shortcut-item"><kbd>Ctrl+双击</kbd> 注释</div>
+                  </div>
+                </div>
+                
+                <!-- 链接 -->
                 <div class="settings-links">
                   <a href="https://github.com/ikusag-png/ComfyUI_bsk_UI/" target="_blank" class="settings-link" title="GitHub">
                     <svg class="link-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
@@ -2939,6 +3808,49 @@
             </div>
           </div>
         </div>
+
+        <!-- 配置选择浮动窗口 -->
+        <div id="config-selector-overlay">
+          <div class="config-selector-container">
+            <div class="config-selector-sidebar">
+              <div class="config-selector-sidebar-header">
+                <span class="config-selector-sidebar-title">📁 分类</span>
+                <button class="config-selector-sidebar-add" id="add-category-btn" title="新建分类">+</button>
+              </div>
+              <div class="config-selector-categories" id="config-categories">
+                <!-- 动态生成分类列表 -->
+              </div>
+            </div>
+            <div class="config-selector-main">
+              <div class="config-selector-header">
+                <span class="config-selector-title" id="config-selector-current-title">选择配置</span>
+                <button class="config-selector-close" id="config-selector-close-btn">✕</button>
+              </div>
+              <div class="config-selector-toolbar">
+                <input type="text" class="config-selector-search" id="config-search-input" placeholder="搜索配置...">
+                <div class="config-selector-actions">
+                  <button class="config-selector-action-btn" id="config-refresh-btn">🔄 刷新</button>
+                  <button class="config-selector-action-btn primary" id="config-save-new-btn">💾 保存新配置</button>
+                </div>
+              </div>
+              <div class="config-selector-content" id="config-selector-content">
+                <!-- 动态生成配置列表 -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 新建分类对话框 -->
+        <div class="new-category-dialog" id="new-category-dialog">
+          <div class="new-category-dialog-content">
+            <div class="new-category-dialog-title">新建分类</div>
+            <input type="text" class="new-category-dialog-input" id="new-category-input" placeholder="输入分类名称">
+            <div class="new-category-dialog-buttons">
+              <button class="new-category-dialog-btn cancel" id="new-category-cancel-btn">取消</button>
+              <button class="new-category-dialog-btn confirm" id="new-category-confirm-btn">确定</button>
+            </div>
+          </div>
+        </div>
       `;
       document.body.appendChild(panel);
       this.panel = panel;
@@ -2948,9 +3860,6 @@
         workflowFile: document.getElementById('workflow-file'),
         uploadWorkflowBtn: document.getElementById('upload-workflow-btn'),
         rebootBtn: document.getElementById('reboot-btn'),
-        loadConfigBtn: document.getElementById('load-config-btn'),
-        saveConfigBtn: document.getElementById('save-config-btn'),
-        saveAsBtn: document.getElementById('save-as-btn'),
         generateBtn: document.getElementById('generate-btn'),
         interruptBtn: document.getElementById('interrupt-btn'),
         clearQueueBtn: document.getElementById('clear-queue-btn'),
@@ -2971,6 +3880,9 @@
         previousResultThumb: document.getElementById('previous-result-thumb'),
         thumbImage: document.getElementById('thumb-image'),
         thumbDownloadIndicator: document.getElementById('thumb-download-indicator'),
+        thumbExpandedActions: document.getElementById('thumb-expanded-actions'),
+        thumbDownloadBtn: document.getElementById('thumb-download-btn'),
+        thumbCopyBtn: document.getElementById('thumb-copy-btn'),
         // 圆形进度指示器
         circularProgress: document.getElementById('circular-progress'),
         circularProgressText: document.getElementById('circular-progress-text'),
@@ -3031,12 +3943,35 @@
         tabsContainer: document.getElementById('tabs-container'),
         newTabName: document.getElementById('new-tab-name'),
         addTabBtn: document.getElementById('add-tab-btn'),
-        serverConfigSelect: document.getElementById('server-config-select'),
+        selectConfigBtn: document.getElementById('select-config-btn'),
+        loadLocalConfigBtn: document.getElementById('load-local-config-btn'),
+        downloadWorkflowBtn: document.getElementById('download-workflow-btn'),
         mainSettingsPanel: document.getElementById('main-settings-panel'),
         themeBtn: document.getElementById('theme-btn'),
         themePanel: document.getElementById('theme-panel'),
         themeEditorContent: document.getElementById('theme-editor-content'),
         applyThemeBtn: document.getElementById('apply-theme-btn'),
+        // 配置选择浮动窗口相关
+        configSelectorOverlay: document.getElementById('config-selector-overlay'),
+        configCategories: document.getElementById('config-categories'),
+        configSelectorContent: document.getElementById('config-selector-content'),
+        configSelectorCloseBtn: document.getElementById('config-selector-close-btn'),
+        configSearchInput: document.getElementById('config-search-input'),
+        configRefreshBtn: document.getElementById('config-refresh-btn'),
+        configSaveNewBtn: document.getElementById('config-save-new-btn'),
+        configSelectorCurrentTitle: document.getElementById('config-selector-current-title'),
+        addCategoryBtn: document.getElementById('add-category-btn'),
+        // 配置预览卡片
+        configPreviewCard: document.getElementById('config-preview-card'),
+        configPreviewThumb: document.getElementById('config-preview-thumb'),
+        configPreviewPlaceholder: document.getElementById('config-preview-placeholder'),
+        configPreviewImage: document.getElementById('config-preview-image'),
+        configPreviewName: document.getElementById('config-preview-name'),
+        // 新建分类对话框
+        newCategoryDialog: document.getElementById('new-category-dialog'),
+        newCategoryInput: document.getElementById('new-category-input'),
+        newCategoryCancelBtn: document.getElementById('new-category-cancel-btn'),
+        newCategoryConfirmBtn: document.getElementById('new-category-confirm-btn'),
       };
     }
 
@@ -3064,9 +3999,51 @@
         this.elements.seedPanel.classList.toggle('collapsed');
       };
 
-      this.elements.saveConfigBtn.onclick = () => this.saveConfig();
-      this.elements.saveAsBtn.onclick = () => this.saveConfigAs();
-      this.elements.loadConfigBtn.onclick = () => this.loadConfigDialog();
+      // 配置选择浮动窗口事件
+      if (this.elements.selectConfigBtn) {
+        this.elements.selectConfigBtn.onclick = () => this.showConfigSelector();
+      }
+      if (this.elements.loadLocalConfigBtn) {
+        this.elements.loadLocalConfigBtn.onclick = () => this.loadConfigDialog();
+      }
+      if (this.elements.downloadWorkflowBtn) {
+        this.elements.downloadWorkflowBtn.onclick = () => this.downloadCurrentWorkflow();
+      }
+      if (this.elements.configSelectorCloseBtn) {
+        this.elements.configSelectorCloseBtn.onclick = () => this.hideConfigSelector();
+      }
+      if (this.elements.configRefreshBtn) {
+        this.elements.configRefreshBtn.onclick = () => this.loadConfigList();
+      }
+      if (this.elements.configSaveNewBtn) {
+        this.elements.configSaveNewBtn.onclick = () => this.saveConfigAsNew();
+      }
+      if (this.elements.configSearchInput) {
+        this.elements.configSearchInput.oninput = (e) => this.filterConfigs(e.target.value);
+      }
+      if (this.elements.addCategoryBtn) {
+        this.elements.addCategoryBtn.onclick = () => this.showNewCategoryDialog();
+      }
+      if (this.elements.newCategoryCancelBtn) {
+        this.elements.newCategoryCancelBtn.onclick = () => this.hideNewCategoryDialog();
+      }
+      if (this.elements.newCategoryConfirmBtn) {
+        this.elements.newCategoryConfirmBtn.onclick = () => this.createNewCategory();
+      }
+      if (this.elements.newCategoryInput) {
+        this.elements.newCategoryInput.onkeypress = (e) => {
+          if (e.key === 'Enter') this.createNewCategory();
+        };
+      }
+
+      // 点击遮罩层关闭配置选择窗口
+      if (this.elements.configSelectorOverlay) {
+        this.elements.configSelectorOverlay.onclick = (e) => {
+          if (e.target === this.elements.configSelectorOverlay) {
+            this.hideConfigSelector();
+          }
+        };
+      }
 
       this.elements.nodeSearch.oninput = (e) => this.filterNodes(e.target.value);
 
@@ -3113,8 +4090,19 @@
       // 提示词库编辑框滚动同步
       this.elements.promptPreviewTextarea.addEventListener('scroll', () => {
         if (this.elements.promptHighlightPre) {
-          this.elements.promptHighlightPre.scrollTop = this.elements.promptPreviewTextarea.scrollTop;
-          this.elements.promptHighlightPre.scrollLeft = this.elements.promptPreviewTextarea.scrollLeft;
+          const textarea = this.elements.promptPreviewTextarea;
+          const highlight = this.elements.promptHighlightPre;
+          
+          // 计算高亮层的最大可滚动距离
+          const maxScrollTop = Math.max(0, highlight.scrollHeight - highlight.clientHeight);
+          const maxScrollLeft = Math.max(0, highlight.scrollWidth - highlight.clientWidth);
+          
+          // 限制滚动范围，防止超出边界
+          const newScrollTop = Math.min(textarea.scrollTop, maxScrollTop);
+          const newScrollLeft = Math.min(textarea.scrollLeft, maxScrollLeft);
+          
+          highlight.scrollTop = newScrollTop;
+          highlight.scrollLeft = newScrollLeft;
         }
       });
       // 提示词库编辑框双击注释功能
@@ -3185,7 +4173,7 @@
           clearTimeout(this.thumbHoverTimeout);
           this.thumbHoverTimeout = null;
         }
-        
+
         // 延迟收起，给用户时间移动回来
         this.thumbCollapseTimeout = setTimeout(() => {
           this.elements.previousResultThumb.classList.remove('expanded');
@@ -3193,22 +4181,26 @@
           this.thumbZoom = 1;
           this.thumbPanX = 0;
           this.thumbPanY = 0;
+          // 清除JavaScript设置的transform，让CSS样式生效
+          this.elements.thumbImage.style.transform = '';
+          this.elements.thumbImage.style.transformOrigin = '';
         }, 300);
       });
 
       // 为展开的缩略图添加缩放和拖拽功能
       this.bindThumbZoomEvents();
 
-      this.elements.addTabBtn.onclick = () => this.addTabFromInput();
+      // 展开状态下的操作按钮事件
+      this.elements.thumbDownloadBtn.onclick = (e) => {
+        e.stopPropagation();
+        this.downloadPreviousResult();
+      };
+      this.elements.thumbCopyBtn.onclick = async (e) => {
+        e.stopPropagation();
+        await this.copyPreviousResult();
+      };
 
-      this.elements.serverConfigSelect.onmousedown = () => {
-        if (this.elements.serverConfigSelect.options.length <= 1) {
-          this.loadServerConfigList();
-        }
-      };
-      this.elements.serverConfigSelect.onchange = () => {
-        this.loadServerConfig();
-      };
+      this.elements.addTabBtn.onclick = () => this.addTabFromInput();
 
       this.elements.themeBtn.onclick = () => this.toggleThemePanel();
       this.elements.applyThemeBtn.onclick = () => this.applyThemeFromInputs();
@@ -3218,7 +4210,7 @@
       this.bindPreviewZoomEvents();
       this.bindDragScroll();
 
-      this.loadServerConfigList();
+      this.loadCategories();
       this.startQueueCheck();
       
       // 独立模式：连接按钮事件（只在显式独立模式下绑定）
@@ -3797,6 +4789,24 @@
             <span class="loaded-badge">✓ 卡片</span>
           `;
         }
+        
+        // 恢复卡片的滚动位置和光标位置
+        const savedScrollTop = this.cardScrollPositions[this.currentHoveredCardKey];
+        const savedCursorPos = this.cardCursorPositions[this.currentHoveredCardKey];
+        
+        requestAnimationFrame(() => {
+          if (savedScrollTop !== undefined) {
+            this.elements.promptPreviewTextarea.scrollTop = savedScrollTop;
+            // 同步高亮层的滚动位置
+            if (this.elements.promptHighlightPre) {
+              this.elements.promptHighlightPre.scrollTop = savedScrollTop;
+            }
+          }
+          
+          if (savedCursorPos !== undefined) {
+            this.elements.promptPreviewTextarea.setSelectionRange(savedCursorPos, savedCursorPos);
+          }
+        });
       }
       // 如果上次选中的是提示词列表中的项目
       else if (this.currentPreviewPrompt && this.currentPreviewIndex >= 0) {
@@ -3819,6 +4829,24 @@
           <span class="card-name">${this.currentPreviewPrompt.title}</span>
           <span class="loaded-badge">✓ 提示词</span>
         `;
+        
+        // 恢复编辑框的滚动位置和光标位置
+        const savedScrollTop = this.promptLibraryScrollPositions[this.currentPreviewIndex];
+        const savedCursorPos = this.promptLibraryCursorPositions[this.currentPreviewIndex];
+        
+        requestAnimationFrame(() => {
+          if (savedScrollTop !== undefined) {
+            this.elements.promptPreviewTextarea.scrollTop = savedScrollTop;
+            // 同步高亮层的滚动位置
+            if (this.elements.promptHighlightPre) {
+              this.elements.promptHighlightPre.scrollTop = savedScrollTop;
+            }
+          }
+          
+          if (savedCursorPos !== undefined) {
+            this.elements.promptPreviewTextarea.setSelectionRange(savedCursorPos, savedCursorPos);
+          }
+        });
       }
     }
 
@@ -3996,6 +5024,19 @@
 
     // 加载卡片内容到提示词编辑框
     loadCardToPromptEditor(cardFullKey, cardTitle) {
+      const textarea = this.elements.promptPreviewTextarea;
+      
+      // 在切换前，保存当前的滚动位置和光标位置
+      if (this.currentPreviewIndex >= 0) {
+        // 当前是提示词列表项，保存到提示词位置存储
+        this.promptLibraryScrollPositions[this.currentPreviewIndex] = textarea.scrollTop;
+        this.promptLibraryCursorPositions[this.currentPreviewIndex] = textarea.selectionStart;
+      } else if (this.currentHoveredCardKey && this.currentHoveredCardKey !== cardFullKey) {
+        // 当前是卡片，保存到卡片位置存储
+        this.cardScrollPositions[this.currentHoveredCardKey] = textarea.scrollTop;
+        this.cardCursorPositions[this.currentHoveredCardKey] = textarea.selectionStart;
+      }
+      
       // 如果有未保存的提示词编辑，先自动保存
       if (this.previewUnsaved && this.currentPreviewIndex >= 0 && this.currentPreviewPrompt) {
         this.autoSavePromptLibrary();
@@ -4018,6 +5059,30 @@
       if (this.elements.promptHighlightPre) {
         this.renderTextareaHighlight(this.elements.promptHighlightPre, content);
       }
+
+      // 恢复该卡片对应的滚动位置和光标位置
+      const savedScrollTop = this.cardScrollPositions[cardFullKey];
+      const savedCursorPos = this.cardCursorPositions[cardFullKey];
+      
+      requestAnimationFrame(() => {
+        if (savedScrollTop !== undefined) {
+          this.elements.promptPreviewTextarea.scrollTop = savedScrollTop;
+          // 同步高亮层的滚动位置
+          if (this.elements.promptHighlightPre) {
+            this.elements.promptHighlightPre.scrollTop = savedScrollTop;
+          }
+        } else {
+          // 如果没有保存的滚动位置，滚动到顶部
+          this.elements.promptPreviewTextarea.scrollTop = 0;
+          if (this.elements.promptHighlightPre) {
+            this.elements.promptHighlightPre.scrollTop = 0;
+          }
+        }
+        
+        if (savedCursorPos !== undefined) {
+          this.elements.promptPreviewTextarea.setSelectionRange(savedCursorPos, savedCursorPos);
+        }
+      });
 
       // 更新标题
       const cardId = cardFullKey.split('.')[0];
@@ -4213,6 +5278,19 @@
 
     // 预览提示词
     previewPrompt(prompt, index) {
+      const textarea = this.elements.promptPreviewTextarea;
+      
+      // 在切换前，保存当前的滚动位置和光标位置
+      if (this.currentPreviewIndex >= 0 && this.currentPreviewIndex !== index) {
+        // 当前是提示词列表项，保存到提示词位置存储
+        this.promptLibraryScrollPositions[this.currentPreviewIndex] = textarea.scrollTop;
+        this.promptLibraryCursorPositions[this.currentPreviewIndex] = textarea.selectionStart;
+      } else if (this.currentHoveredCardKey) {
+        // 当前是卡片，保存到卡片位置存储
+        this.cardScrollPositions[this.currentHoveredCardKey] = textarea.scrollTop;
+        this.cardCursorPositions[this.currentHoveredCardKey] = textarea.selectionStart;
+      }
+
       this.currentPreviewPrompt = prompt;
       this.currentPreviewIndex = index;
       this.previewUnsaved = false;
@@ -4226,6 +5304,31 @@
       if (this.elements.promptHighlightPre) {
         this.renderTextareaHighlight(this.elements.promptHighlightPre, prompt.content);
       }
+
+      // 恢复该列表项对应的滚动位置和光标位置
+      const savedScrollTop = this.promptLibraryScrollPositions[index];
+      const savedCursorPos = this.promptLibraryCursorPositions[index];
+      
+      // 使用 requestAnimationFrame 确保在内容更新后再恢复滚动位置
+      requestAnimationFrame(() => {
+        if (savedScrollTop !== undefined) {
+          this.elements.promptPreviewTextarea.scrollTop = savedScrollTop;
+          // 同步高亮层的滚动位置
+          if (this.elements.promptHighlightPre) {
+            this.elements.promptHighlightPre.scrollTop = savedScrollTop;
+          }
+        } else {
+          // 如果没有保存的滚动位置，滚动到顶部
+          this.elements.promptPreviewTextarea.scrollTop = 0;
+          if (this.elements.promptHighlightPre) {
+            this.elements.promptHighlightPre.scrollTop = 0;
+          }
+        }
+        
+        if (savedCursorPos !== undefined) {
+          this.elements.promptPreviewTextarea.setSelectionRange(savedCursorPos, savedCursorPos);
+        }
+      });
 
       // 更新标题 - 显示提示词模式
       const cardId = prompt.id.split('.')[0];
@@ -4576,6 +5679,25 @@
     // 删除提示词
     async deletePrompt(index) {
       this.promptLibrary.splice(index, 1);
+      
+      // 调整滚动位置存储：删除当前索引，后面的索引前移
+      delete this.promptLibraryScrollPositions[index];
+      delete this.promptLibraryCursorPositions[index];
+      const newScrollPositions = {};
+      const newCursorPositions = {};
+      for (const key in this.promptLibraryScrollPositions) {
+        const keyNum = parseInt(key);
+        if (keyNum > index) {
+          newScrollPositions[keyNum - 1] = this.promptLibraryScrollPositions[key];
+          newCursorPositions[keyNum - 1] = this.promptLibraryCursorPositions[key];
+        } else if (keyNum < index) {
+          newScrollPositions[keyNum] = this.promptLibraryScrollPositions[key];
+          newCursorPositions[keyNum] = this.promptLibraryCursorPositions[key];
+        }
+      }
+      this.promptLibraryScrollPositions = newScrollPositions;
+      this.promptLibraryCursorPositions = newCursorPositions;
+      
       await this.savePromptLibraryConfig();
       this.renderPromptLibraryList();
       // 清空预览
@@ -5474,27 +6596,40 @@
       }
     }
     
-    // 让缩略图居中显示
+    // 让缩略图居中显示，并按比例约束在视口内
     centerThumbImage() {
       const container = this.elements.previousResultThumb;
       const image = this.elements.thumbImage;
-      
+
       if (!container || !image) return;
-      
+
       // 获取容器和图片的尺寸
       const containerRect = container.getBoundingClientRect();
       const imgWidth = image.naturalWidth || image.width;
       const imgHeight = image.naturalHeight || image.height;
-      
+
       if (imgWidth && imgHeight) {
+        // 计算缩放比例，让图片完整显示在容器内（留一些边距）
+        const padding = 60; // 边距，为操作按钮留空间
+        const availableWidth = containerRect.width - padding * 2;
+        const availableHeight = containerRect.height - padding * 2;
+
+        const scaleX = availableWidth / imgWidth;
+        const scaleY = availableHeight / imgHeight;
+        // 使用较小的缩放比例，确保图片完整显示
+        this.thumbZoom = Math.min(scaleX, scaleY, 1); // 最大不超过1（不放大）
+
         // 计算让图片居中的平移量
-        this.thumbPanX = (containerRect.width - imgWidth) / 2;
-        this.thumbPanY = (containerRect.height - imgHeight) / 2;
+        const scaledWidth = imgWidth * this.thumbZoom;
+        const scaledHeight = imgHeight * this.thumbZoom;
+        this.thumbPanX = (containerRect.width - scaledWidth) / 2;
+        this.thumbPanY = (containerRect.height - scaledHeight) / 2;
       } else {
+        this.thumbZoom = 1;
         this.thumbPanX = 0;
         this.thumbPanY = 0;
       }
-      
+
       this.updateThumbTransform();
     }
 
@@ -6459,8 +7594,8 @@
           const workflow = JSON.parse(e.target.result); 
           this.setWorkflow(workflow);
           this.resetTabsFromWorkflow();
-          // 清除服务器配置列表选项，避免点保存覆盖原配置
-          this.elements.serverConfigSelect.value = '';
+          // 清除当前配置选择
+          this.currentSelectedConfig = null;
         }
         catch (err) { alert('无法解析工作流文件'); }
       };
@@ -6489,6 +7624,11 @@
       this.outputNodeIds = new Set();
       // 保存原始工作流的输入连接信息（用于重置功能）
       this.originalInputLinks = {};
+      // 重置用户配置的上游连接设置，避免旧工作流的配置影响新工作流
+      this.inputLinkSettings = {};
+      this.cardLinkToggleState = {};
+      this.inputDefaultConfig = {};
+      this.inputDisabledValues = {};
       // 创建节点ID到节点标题的映射（用于显示上游节点名称）
       this.nodeIdToTitle = {};
       
@@ -7585,6 +8725,23 @@
 
       highlightEl.innerHTML = '';
       highlightEl.appendChild(fragment);
+      
+      // 如果文本末尾有换行符，需要在高亮层也添加，以保持滚动高度一致
+      // textarea 会保留末尾换行符产生的额外高度，高亮层也需要同步
+      // 计算末尾连续换行符的数量
+      let trailingNewlines = 0;
+      for (let i = text.length - 1; i >= 0; i--) {
+        if (text[i] === '\n') {
+          trailingNewlines++;
+        } else {
+          break;
+        }
+      }
+      // 添加与末尾换行符数量相同的换行（减去已在循环中添加的）
+      // 循环中已经处理了行间换行，所以只需确保末尾有足够的换行
+      for (let i = 0; i < trailingNewlines; i++) {
+        highlightEl.appendChild(document.createTextNode('\n'));
+      }
     }
 
     /**
@@ -9113,8 +10270,9 @@
       // 停止帧动画
       this.stopFrameAnimation();
       this.clearPreviewFrames();
-      
+
       this.generatedImages = images;
+      this.generatedVideos = [];  // 清空视频列表，确保下载时使用正确的类型
       if (images?.length > 0) {
         const image = images[0];
         const url = this.baseUrl + `/view?filename=${encodeURIComponent(image.filename)}&type=${image.type}&subfolder=${image.subfolder || ''}&t=${Date.now()}`;
@@ -9162,8 +10320,9 @@
         // console.log('[ComfyUI Panel] No videos to display');
         return;
       }
-      
+
       this.generatedVideos = videos;
+      this.generatedImages = [];  // 清空图片列表，确保下载时使用正确的类型
       const video = videos[0];
       
       // console.log('[ComfyUI Panel] First video:', video);
@@ -9249,7 +10408,14 @@
 
       this.elements.thumbImage.src = this.previousResult.url;
       this.elements.previousResultThumb.style.display = 'flex';
-      
+
+      // 重置图片的transform样式，确保缩略图能正确显示
+      this.elements.thumbImage.style.transform = '';
+      this.elements.thumbImage.style.transformOrigin = '';
+      this.thumbZoom = 1;
+      this.thumbPanX = 0;
+      this.thumbPanY = 0;
+
       // 更新下载状态样式
       if (this.previousResult.downloaded) {
         this.elements.previousResultThumb.classList.add('downloaded');
@@ -9268,16 +10434,7 @@
         const response = await fetch(url);
         const blob = await response.blob();
 
-        // 如果已下载，复制到剪贴板
-        if (this.previousResult.downloaded) {
-          // 转换为 PNG 格式以确保剪贴板兼容性
-          const pngBlob = await this.convertToPNG(blob);
-          await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
-          this.showToast('已复制到剪贴板');
-          return;
-        }
-
-        // 否则下载
+        // 下载文件
         const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = blobUrl;
@@ -9288,9 +10445,29 @@
         // 标记为已下载
         this.previousResult.downloaded = true;
         this.updatePreviousResultThumb();
+        this.showToast('已下载: ' + filename);
       } catch (e) {
         console.error('[ComfyUI Panel] Download previous result failed:', e);
-        this.showToast('操作失败: ' + e.message);
+        this.showToast('下载失败: ' + e.message);
+      }
+    }
+
+    // 复制上一个结果到剪贴板
+    async copyPreviousResult() {
+      if (!this.previousResult) return;
+
+      try {
+        const url = this.previousResult.url;
+        const response = await fetch(url);
+        const blob = await response.blob();
+
+        // 转换为 PNG 格式以确保剪贴板兼容性
+        const pngBlob = await this.convertToPNG(blob);
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+        this.showToast('已复制到剪贴板');
+      } catch (e) {
+        console.error('[ComfyUI Panel] Copy previous result failed:', e);
+        this.showToast('复制失败: ' + e.message);
       }
     }
 
@@ -9333,8 +10510,7 @@
 
     // 保存配置到服务器
     async saveConfigToServer(config, silent = false) {
-      const select = this.elements.serverConfigSelect;
-      let filename = select.value;
+      let filename = this.currentSelectedConfig;
       
       // 如果没有选中的配置，弹出输入框（静默模式不弹）
       if (!filename) {
@@ -9346,28 +10522,40 @@
         if (!filename) return;
         filename = filename + '.json';
       }
-      // 有选中的配置，直接覆盖，不弹提示
+      
+      // 如果是PNG配置文件，保存到临时JSON文件（分离存储策略）
+      const isPng = filename.toLowerCase().endsWith('.png');
+      let saveFilename = filename;
+      if (isPng) {
+        // PNG配置文件：保存到同名的临时JSON文件
+        saveFilename = filename.replace(/\.png$/i, '_temp.json');
+        console.log('[ComfyUI Panel] PNG config detected, saving to temp JSON:', saveFilename);
+      }
 
       try {
-        const response = await fetch(this.baseUrl + '/comfyui_panel/save_config', {
+        const response = await fetch(this.baseUrl + '/comfyui_panel/save_config_v2', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            filename: filename,
-            config: config
+            filename: saveFilename,
+            config: config,
+            category: this.currentConfigCategory || ''
           })
         });
         const result = await response.json();
         if (result.success) {
           if (!silent) {
-            this.showToast(`配置已保存到服务器: ${result.filename}`);
+            // PNG配置文件显示不同的提示
+            if (isPng) {
+              this.showToast(`配置已自动保存（临时文件）`);
+            } else {
+              this.showToast(`配置已保存到服务器: ${result.filename}`);
+            }
           }
-          // 刷新配置列表
-          await this.loadServerConfigList();
-          // 选定保存的配置
-          select.value = result.filename;
-          // 保存为上次使用的配置
-          this.saveLastUsedConfig(result.filename);
+          // 保存为上次使用的配置（保持原PNG文件名）
+          this.saveLastUsedConfig(filename, this.currentConfigCategory || '');
+          // 保持原配置文件名（不更新为临时JSON文件名）
+          // this.currentSelectedConfig = filename; // 保持原值
         } else {
           if (!silent) {
             alert('保存到服务器失败: ' + result.error);
@@ -9384,33 +10572,30 @@
     // 另存为功能
     async saveConfigAs() {
       const config = this.getConfig();
-      const select = this.elements.serverConfigSelect;
       
-      // 获取默认文件名（当前选中的配置名或空）
-      const defaultName = select.value ? select.value.replace('.json', '') : 'my_config';
+      // 获取默认文件名
+      const defaultName = this.currentSelectedConfig ? this.currentSelectedConfig.replace('.json', '') : 'my_config';
       
       let filename = prompt('请输入新的文件名（不包含扩展名）', defaultName);
       if (!filename) return;
       filename = filename + '.json';
 
       try {
-        const response = await fetch(this.baseUrl + '/comfyui_panel/save_config', {
+        const response = await fetch(this.baseUrl + '/comfyui_panel/save_config_v2', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             filename: filename,
-            config: config
+            config: config,
+            category: this.currentConfigCategory || ''
           })
         });
         const result = await response.json();
         if (result.success) {
           this.showToast(`配置已另存为: ${result.filename}`);
-          // 刷新配置列表
-          await this.loadServerConfigList();
-          // 选定保存的配置
-          select.value = result.filename;
           // 保存为上次使用的配置
-          this.saveLastUsedConfig(result.filename);
+          this.saveLastUsedConfig(result.filename, this.currentConfigCategory || '');
+          this.currentSelectedConfig = result.filename;
         } else {
           alert('保存到服务器失败: ' + result.error);
         }
@@ -9421,14 +10606,14 @@
     }
 
     // 保存上次使用的配置文件名
-    async saveLastUsedConfig(filename) {
+    async saveLastUsedConfig(filename, category = '') {
       try {
         await fetch(this.baseUrl + '/comfyui_panel/save_config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             filename: '.last_used_config.json',
-            config: { lastUsedConfig: filename, timestamp: Date.now() }
+            config: { lastUsedConfig: filename, lastUsedCategory: category, timestamp: Date.now() }
           })
         });
       } catch (e) {
@@ -9442,7 +10627,7 @@
         const response = await fetch(this.baseUrl + '/comfyui_panel/load_config?name=.last_used_config.json');
         const data = await response.json();
         if (data.success && data.config && data.config.lastUsedConfig) {
-          return data.config.lastUsedConfig;
+          return data.config;
         }
       } catch (e) {
         // 文件不存在或其他错误，忽略
@@ -9450,36 +10635,56 @@
       return null;
     }
 
-    async loadServerConfigList() {
+    // 获取所有分类下的配置文件（递归）
+    async loadAllConfigsList() {
       try {
-        const response = await fetch(this.baseUrl + '/comfyui_panel/list_configs');
+        const response = await fetch(this.baseUrl + '/comfyui_panel/list_all_configs');
         const data = await response.json();
         if (data.success) {
-          const select = this.elements.serverConfigSelect;
-          select.innerHTML = '<option value="">-- 选择配置 --</option>';
-          
-          // 排除提示词库配置文件和隐藏文件
+          // 排除提示词库配置文件、隐藏文件和临时文件
           const promptLibraryFilename = this.getPromptLibraryFilename();
           const filteredFiles = data.files.filter(file => 
             file.name !== promptLibraryFilename && 
-            !file.name.startsWith('.')
+            !file.name.startsWith('.') &&
+            !file.name.endsWith('_temp.json')
           );
           
           // 按修改时间排序（最新的在前）
           filteredFiles.sort((a, b) => {
-            const timeA = new Date(a.modified || 0).getTime();
-            const timeB = new Date(b.modified || 0).getTime();
+            const timeA = new Date(a.mtime || 0).getTime();
+            const timeB = new Date(b.mtime || 0).getTime();
             return timeB - timeA;
           });
           
-          filteredFiles.forEach(file => {
-            const option = document.createElement('option');
-            option.value = file.name;
-            option.textContent = file.display;
-            select.appendChild(option);
+          return filteredFiles;
+        }
+      } catch (e) {
+        console.error('[ComfyUI Panel] Error loading all configs:', e);
+      }
+      return [];
+    }
+
+    async loadServerConfigList() {
+      try {
+        const response = await fetch(this.baseUrl + '/comfyui_panel/list_configs_v2?category=' + encodeURIComponent(this.currentConfigCategory || ''));
+        const data = await response.json();
+        if (data.success) {
+          // 排除提示词库配置文件、隐藏文件和临时文件
+          const promptLibraryFilename = this.getPromptLibraryFilename();
+          const filteredFiles = data.files.filter(file => 
+            file.name !== promptLibraryFilename && 
+            !file.name.startsWith('.') &&
+            !file.name.endsWith('_temp.json')
+          );
+          
+          // 按修改时间排序（最新的在前）
+          filteredFiles.sort((a, b) => {
+            const timeA = new Date(a.mtime || 0).getTime();
+            const timeB = new Date(b.mtime || 0).getTime();
+            return timeB - timeA;
           });
           
-          // 返回排序后的文件列表，供自动加载使用
+          // 返回排序后的文件列表
           return filteredFiles;
         }
       } catch (e) {
@@ -9491,8 +10696,8 @@
     // 自动加载上次使用的配置文件
     async autoLoadLastConfig() {
       try {
-        // 先加载配置列表
-        const files = await this.loadServerConfigList();
+        // 获取所有分类下的配置文件（递归）
+        const files = await this.loadAllConfigsList();
         if (!files || files.length === 0) {
           // 没有配置文件，加载提示词库后返回
           this.loadPromptLibraryConfig();
@@ -9500,32 +10705,65 @@
         }
 
         // 尝试加载上次使用的配置
-        const lastUsedFilename = await this.loadLastUsedConfig();
+        const lastUsedData = await this.loadLastUsedConfig();
         let configToLoad = null;
+        let categoryToLoad = '';
+        let hasTempFile = false;
 
-        if (lastUsedFilename) {
-          // 检查上次使用的配置是否还在列表中
-          const exists = files.some(f => f.name === lastUsedFilename);
-          if (exists) {
-            configToLoad = lastUsedFilename;
+        if (lastUsedData && lastUsedData.lastUsedConfig) {
+          // 检查上次使用的配置是否还在列表中（匹配文件名和分类）
+          const file = files.find(f => 
+            f.name === lastUsedData.lastUsedConfig && 
+            f.category === (lastUsedData.lastUsedCategory || '')
+          );
+          if (file) {
+            configToLoad = lastUsedData.lastUsedConfig;
+            categoryToLoad = lastUsedData.lastUsedCategory || '';
+            hasTempFile = file.has_temp || false;
           }
         }
 
         // 如果没有上次使用的配置，使用最新修改的配置
         if (!configToLoad) {
           configToLoad = files[0].name;
+          categoryToLoad = files[0].category || '';
+          hasTempFile = files[0].has_temp || false;
         }
 
-        console.log('[ComfyUI Panel] Auto loading config:', configToLoad);
+        console.log('[ComfyUI Panel] Auto loading config:', configToLoad, 'category:', categoryToLoad, 'hasTemp:', hasTempFile);
 
-        const response = await fetch(this.baseUrl + '/comfyui_panel/load_config?name=' + encodeURIComponent(configToLoad));
+        // 如果有临时文件，优先加载临时文件
+        if (hasTempFile) {
+          const tempFilename = configToLoad.replace(/\.png$/i, '_temp.json');
+          const tempUrl = `${this.baseUrl}/comfyui_panel/load_config_v2?name=${encodeURIComponent(tempFilename)}&category=${encodeURIComponent(categoryToLoad)}`;
+          const tempResponse = await fetch(tempUrl);
+          const tempData = await tempResponse.json();
+          
+          if (tempData.success) {
+            // 临时JSON文件存在，使用它
+            this.currentSelectedConfig = configToLoad;
+            this.currentConfigCategory = categoryToLoad;
+            this.applyConfig(tempData.config);
+            this.showToast(`已自动加载: ${configToLoad}`);
+            this.updateConfigPreview(configToLoad, categoryToLoad);
+            this.saveLastUsedConfig(configToLoad, categoryToLoad);
+            this.loadPromptLibraryConfig();
+            return true;
+          }
+        }
+
+        // 加载原配置文件
+        const response = await fetch(this.baseUrl + '/comfyui_panel/load_config_v2?name=' + encodeURIComponent(configToLoad) + '&category=' + encodeURIComponent(categoryToLoad));
         const data = await response.json();
         if (data.success) {
-          this.elements.serverConfigSelect.value = configToLoad;
+          this.currentSelectedConfig = configToLoad;
+          this.currentConfigCategory = categoryToLoad;
           this.applyConfig(data.config);
           this.showToast(`已自动加载: ${configToLoad}`);
+          // 更新配置预览
+          this.updateConfigPreview(configToLoad, categoryToLoad);
           // 更新上次使用的配置记录
-          this.saveLastUsedConfig(configToLoad);
+          this.saveLastUsedConfig(configToLoad, categoryToLoad);
           // 加载提示词库
           this.loadPromptLibraryConfig();
           return true;
@@ -9539,21 +10777,20 @@
     }
 
     async loadServerConfig() {
-      const select = this.elements.serverConfigSelect;
-      const filename = select.value;
-      if (!filename) {
+      // 此方法已被loadSelectedConfig替代，保留用于兼容
+      if (!this.currentSelectedConfig) {
         alert('请先选择一个配置');
         return;
       }
 
       try {
-        const response = await fetch(this.baseUrl + '/comfyui_panel/load_config?name=' + encodeURIComponent(filename));
+        const response = await fetch(this.baseUrl + '/comfyui_panel/load_config_v2?name=' + encodeURIComponent(this.currentSelectedConfig) + '&category=' + encodeURIComponent(this.currentConfigCategory || ''));
         const data = await response.json();
         if (data.success) {
           this.applyConfig(data.config);
-          this.showToast(`已加载配置: ${filename}`);
+          this.showToast(`已加载配置: ${this.currentSelectedConfig}`);
           // 保存为上次使用的配置
-          this.saveLastUsedConfig(filename);
+          this.saveLastUsedConfig(this.currentSelectedConfig, this.currentConfigCategory || '');
           // 同时加载提示词库配置
           this.loadPromptLibraryConfig();
         } else {
@@ -9578,8 +10815,8 @@
             const config = JSON.parse(ev.target.result);
             this.applyConfig(config);
             this.saveToLocalStorage();
-            // 清除服务器配置列表选项，避免点保存覆盖原配置
-            this.elements.serverConfigSelect.value = '';
+            // 清除当前配置选择
+            this.currentSelectedConfig = null;
             this.showToast('配置已加载');
           } catch (err) { alert('无法解析配置文件'); }
         };
@@ -9867,6 +11104,758 @@
       // 如果服务器配置加载失败，再尝试从本地存储加载
       if (!serverLoaded) {
         this.loadFromLocalStorage();
+      }
+    }
+
+    // ========== 配置选择浮动窗口相关方法 ==========
+    
+    // 当前选中的分类
+    currentConfigCategory = '';
+    // 当前选中的配置
+    currentSelectedConfig = null;
+    // 分类列表缓存
+    configCategories = [];
+    // 配置列表缓存
+    configFiles = [];
+    
+    showConfigSelector() {
+      this.elements.configSelectorOverlay.classList.add('visible');
+      this.loadCategories();
+    }
+    
+    hideConfigSelector() {
+      this.elements.configSelectorOverlay.classList.remove('visible');
+    }
+    
+    async loadCategories() {
+      try {
+        const response = await fetch(this.baseUrl + '/comfyui_panel/list_categories');
+        const data = await response.json();
+        
+        if (data.success) {
+          this.configCategories = data.categories || [];
+          this.renderCategories();
+          
+          // 如果没有分类，默认选择根目录
+          if (this.configCategories.length === 0) {
+            this.selectCategory('');
+          } else {
+            // 默认选择第一个分类或根目录
+            this.selectCategory(this.currentConfigCategory || '');
+          }
+        }
+      } catch (e) {
+        console.error('[ComfyUI Panel] Load categories failed:', e);
+        this.showToast('加载分类失败');
+      }
+    }
+    
+    renderCategories() {
+      const container = this.elements.configCategories;
+      container.innerHTML = '';
+      
+      // 添加"默认"选项（根目录）
+      const allItem = document.createElement('div');
+      allItem.className = `config-selector-category ${this.currentConfigCategory === '' ? 'active' : ''}`;
+      allItem.innerHTML = `
+        <span class="config-selector-category-name">📁 默认</span>
+        <span class="config-selector-category-count" id="category-count-root">0</span>
+      `;
+      allItem.onclick = () => this.selectCategory('');
+      container.appendChild(allItem);
+      
+      // 添加各个分类
+      this.configCategories.forEach(cat => {
+        const item = document.createElement('div');
+        item.className = `config-selector-category ${this.currentConfigCategory === cat.name ? 'active' : ''}`;
+        item.innerHTML = `
+          <span class="config-selector-category-name">${cat.name}</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="config-selector-category-count">${cat.count}</span>
+            <div class="config-selector-category-actions">
+              <button class="config-selector-category-btn" title="删除分类" data-category="${cat.name}">🗑</button>
+            </div>
+          </div>
+        `;
+        item.onclick = (e) => {
+          if (!e.target.classList.contains('config-selector-category-btn')) {
+            this.selectCategory(cat.name);
+          }
+        };
+        
+        // 删除分类按钮
+        const deleteBtn = item.querySelector('.config-selector-category-btn');
+        deleteBtn.onclick = (e) => {
+          e.stopPropagation();
+          this.deleteCategory(cat.name);
+        };
+        
+        container.appendChild(item);
+      });
+    }
+    
+    selectCategory(categoryName) {
+      this.currentConfigCategory = categoryName;
+      this.elements.configSelectorCurrentTitle.textContent = categoryName || '默认';
+      
+      // 更新分类列表的active状态
+      const categories = this.elements.configCategories.querySelectorAll('.config-selector-category');
+      categories.forEach(cat => {
+        const nameEl = cat.querySelector('.config-selector-category-name');
+        if (nameEl) {
+          const name = nameEl.textContent.replace('📁 ', '');
+          cat.classList.toggle('active', name === (categoryName || '默认'));
+        }
+      });
+      
+      // 加载该分类下的配置列表
+      this.loadConfigList();
+    }
+    
+    async loadConfigList() {
+      try {
+        const url = `${this.baseUrl}/comfyui_panel/list_configs_v2?category=${encodeURIComponent(this.currentConfigCategory)}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.success) {
+          // 过滤掉临时文件和隐藏文件（双重保险）
+          this.configFiles = (data.files || []).filter(file => 
+            !file.name.startsWith('.') && 
+            !file.name.endsWith('_temp.json')
+          );
+          this.renderConfigList();
+          
+          // 更新根目录的计数
+          if (this.currentConfigCategory === '') {
+            const countEl = document.getElementById('category-count-root');
+            if (countEl) countEl.textContent = this.configFiles.length;
+          }
+        }
+      } catch (e) {
+        console.error('[ComfyUI Panel] Load config list failed:', e);
+        this.showToast('加载配置列表失败');
+      }
+    }
+    
+    renderConfigList() {
+      const container = this.elements.configSelectorContent;
+      const searchTerm = this.elements.configSearchInput ? this.elements.configSearchInput.value.toLowerCase() : '';
+      
+      // 过滤配置
+      const filteredFiles = this.configFiles.filter(file => 
+        file.display.toLowerCase().includes(searchTerm)
+      );
+      
+      if (filteredFiles.length === 0) {
+        container.innerHTML = `
+          <div class="config-selector-empty">
+            <div class="config-selector-empty-icon">📭</div>
+            <div class="config-selector-empty-text">
+              ${searchTerm ? '没有找到匹配的配置' : '暂无配置文件'}
+            </div>
+          </div>
+        `;
+        return;
+      }
+      
+      container.innerHTML = '<div class="config-selector-grid"></div>';
+      const grid = container.querySelector('.config-selector-grid');
+      
+      filteredFiles.forEach(file => {
+        const item = document.createElement('div');
+        item.className = 'config-item';
+        item.dataset.name = file.name;
+        item.dataset.type = file.type;
+        
+        // 格式化修改时间
+        const mtime = new Date(file.mtime * 1000);
+        const timeStr = mtime.toLocaleDateString() + ' ' + mtime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        
+        item.innerHTML = `
+          <span class="config-item-type ${file.type}">${file.type}</span>
+          <button class="config-item-delete-btn" title="删除">×</button>
+          <div class="config-item-thumbnail">
+            ${file.type === 'png' ? 
+              `<img src="${this.baseUrl}/comfyui_panel/config_thumbnail?name=${encodeURIComponent(file.name)}&category=${encodeURIComponent(this.currentConfigCategory)}" alt="${file.display}">` :
+              `<span class="placeholder-icon">📄</span>`
+            }
+            <div class="config-item-actions">
+              <button class="config-item-btn overwrite-btn" title="用当前配置覆盖">📝</button>
+              <button class="config-item-btn download-btn" title="下载配置">📥︎</button>
+              <button class="config-item-btn paste-btn" title="粘贴图片嵌入配置">📋</button>
+            </div>
+            <div class="config-item-info">
+              <div class="config-item-name" title="${file.display}">${file.display}</div>
+              <div class="config-item-meta">${timeStr}</div>
+            </div>
+          </div>
+        `;
+        
+        // 点击加载配置
+        item.onclick = (e) => {
+          if (!e.target.classList.contains('config-item-btn') && !e.target.classList.contains('config-item-delete-btn')) {
+            this.loadSelectedConfig(file.name);
+          }
+        };
+        
+        // 覆盖按钮
+        const overwriteBtn = item.querySelector('.overwrite-btn');
+        if (overwriteBtn) {
+          overwriteBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.overwriteConfig(file.name);
+          };
+        }
+        
+        // 下载按钮
+        const downloadBtn = item.querySelector('.download-btn');
+        if (downloadBtn) {
+          downloadBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.downloadConfig(file.name);
+          };
+        }
+        
+        // 粘贴按钮
+        const pasteBtn = item.querySelector('.paste-btn');
+        if (pasteBtn) {
+          pasteBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.pasteImageToConfig(file.name);
+          };
+        }
+        
+        // 删除按钮（右上角圆形按钮）- 倒计时确认删除
+        const deleteBtn = item.querySelector('.config-item-delete-btn');
+        if (deleteBtn) {
+          deleteBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.handleDeleteClick(file.name, file.type, deleteBtn);
+          };
+        }
+        
+        grid.appendChild(item);
+      });
+    }
+    
+    filterConfigs(searchTerm) {
+      this.renderConfigList();
+    }
+    
+    async loadSelectedConfig(filename) {
+      try {
+        // 如果是PNG配置文件，优先尝试加载临时JSON文件
+        const isPng = filename.toLowerCase().endsWith('.png');
+        let loadFilename = filename;
+        let loadedFromTemp = false;
+        
+        if (isPng) {
+          // 尝试加载临时JSON文件
+          const tempFilename = filename.replace(/\.png$/i, '_temp.json');
+          const tempUrl = `${this.baseUrl}/comfyui_panel/load_config_v2?name=${encodeURIComponent(tempFilename)}&category=${encodeURIComponent(this.currentConfigCategory)}`;
+          const tempResponse = await fetch(tempUrl);
+          const tempData = await tempResponse.json();
+          
+          if (tempData.success) {
+            // 临时JSON文件存在，使用它
+            loadFilename = tempFilename;
+            loadedFromTemp = true;
+            this.applyConfig(tempData.config);
+            this.hideConfigSelector();
+            this.showToast(`已加载配置（临时文件）: ${filename}`);
+            
+            // 更新配置预览（显示原PNG文件名）
+            this.updateConfigPreview(filename, this.currentConfigCategory);
+            
+            // 保存为上次使用的配置（保持原PNG文件名）
+            this.saveLastUsedConfig(filename, this.currentConfigCategory);
+            this.currentSelectedConfig = filename;
+            return;
+          }
+        }
+        
+        // 加载原配置文件
+        const url = `${this.baseUrl}/comfyui_panel/load_config_v2?name=${encodeURIComponent(loadFilename)}&category=${encodeURIComponent(this.currentConfigCategory)}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.success) {
+          this.applyConfig(data.config);
+          this.hideConfigSelector();
+          this.showToast(`已加载配置: ${data.filename}`);
+          
+          // 更新配置预览
+          this.updateConfigPreview(filename, this.currentConfigCategory);
+          
+          // 保存为上次使用的配置
+          this.saveLastUsedConfig(filename, this.currentConfigCategory);
+          this.currentSelectedConfig = filename;
+        } else {
+          this.showToast('加载配置失败: ' + data.error);
+        }
+      } catch (e) {
+        console.error('[ComfyUI Panel] Load config failed:', e);
+        this.showToast('加载配置失败');
+      }
+    }
+    
+    // 更新配置预览卡片
+    updateConfigPreview(filename, category) {
+      if (!this.elements.configPreviewName) return;
+      
+      // 更新文件名显示
+      const displayName = filename.replace(/\.(json|png)$/i, '');
+      this.elements.configPreviewName.textContent = displayName;
+      this.elements.configPreviewName.title = filename;
+      
+      // 检查是否是PNG文件（有缩略图）
+      if (filename.toLowerCase().endsWith('.png')) {
+        const thumbUrl = `${this.baseUrl}/comfyui_panel/config_thumbnail?name=${encodeURIComponent(filename)}&category=${encodeURIComponent(category || '')}`;
+        if (this.elements.configPreviewImage) {
+          this.elements.configPreviewImage.src = thumbUrl;
+          this.elements.configPreviewImage.style.display = 'block';
+        }
+        if (this.elements.configPreviewPlaceholder) {
+          this.elements.configPreviewPlaceholder.style.display = 'none';
+        }
+      } else {
+        // JSON文件显示文件图标
+        if (this.elements.configPreviewImage) {
+          this.elements.configPreviewImage.style.display = 'none';
+        }
+        if (this.elements.configPreviewPlaceholder) {
+          this.elements.configPreviewPlaceholder.style.display = 'block';
+          this.elements.configPreviewPlaceholder.textContent = '📄';
+        }
+      }
+      
+      // 保存当前配置信息
+      this.currentSelectedConfig = filename;
+      this.currentConfigCategory = category || '';
+    }
+    
+    async saveConfigAsNew() {
+      const filename = prompt('请输入配置名称（不包含扩展名）', 'my_config');
+      if (!filename) return;
+      
+      const config = this.getConfig();
+      
+      try {
+        const response = await fetch(this.baseUrl + '/comfyui_panel/save_config_v2', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: filename + '.json',
+            config: config,
+            category: this.currentConfigCategory
+          })
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+          this.showToast(`配置已保存: ${result.filename}`);
+          // 同时下载到本地
+          this.downloadConfigToLocal(filename + '.json', config);
+          this.loadConfigList();
+        } else {
+          this.showToast('保存失败: ' + result.error);
+        }
+      } catch (e) {
+        console.error('[ComfyUI Panel] Save config failed:', e);
+        this.showToast('保存配置失败');
+      }
+    }
+    
+    // 用当前配置覆盖指定配置
+    async overwriteConfig(filename) {
+      if (!confirm(`确定要用当前配置覆盖 \"${filename}\" 吗？`)) {
+        return;
+      }
+      
+      const config = this.getConfig();
+      
+      try {
+        // 检查是否是PNG文件
+        const isPng = filename.toLowerCase().endsWith('.png');
+        
+        if (isPng) {
+          // PNG文件：更新PNG中的配置数据，保留图片
+          const response = await fetch(this.baseUrl + '/comfyui_panel/update_png_config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filename: filename,
+              config: config,
+              category: this.currentConfigCategory
+            })
+          });
+          
+          const result = await response.json();
+          if (result.success) {
+            // 删除临时JSON文件
+            const tempFilename = filename.replace(/\.png$/i, '_temp.json');
+            await fetch(this.baseUrl + '/comfyui_panel/delete_config', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                filename: tempFilename,
+                category: this.currentConfigCategory
+              })
+            });
+            
+            this.showToast(`配置已更新到PNG: ${filename}`);
+            this.loadConfigList();
+          } else {
+            this.showToast('更新失败: ' + result.error);
+          }
+        } else {
+          // JSON文件：直接保存
+          const response = await fetch(this.baseUrl + '/comfyui_panel/save_config_v2', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filename: filename,
+              config: config,
+              category: this.currentConfigCategory
+            })
+          });
+          
+          const result = await response.json();
+          if (result.success) {
+            this.showToast(`配置已覆盖: ${filename}`);
+            // 同时下载到本地
+            this.downloadConfigToLocal(filename, config);
+            this.loadConfigList();
+          } else {
+            this.showToast('覆盖失败: ' + result.error);
+          }
+        }
+      } catch (e) {
+        console.error('[ComfyUI Panel] Overwrite config failed:', e);
+        this.showToast('覆盖配置失败');
+      }
+    }
+    
+    // 下载配置到本地
+    async downloadConfig(filename) {
+      try {
+        // 先从服务器获取配置内容
+        const url = `${this.baseUrl}/comfyui_panel/load_config_v2?name=${encodeURIComponent(filename)}&category=${encodeURIComponent(this.currentConfigCategory)}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.success) {
+          this.downloadConfigToLocal(filename, data.config);
+          this.showToast(`已下载: ${filename}`);
+        } else {
+          this.showToast('下载失败: ' + data.error);
+        }
+      } catch (e) {
+        console.error('[ComfyUI Panel] Download config failed:', e);
+        this.showToast('下载配置失败');
+      }
+    }
+    
+    // 实际下载配置文件到本地
+    downloadConfigToLocal(filename, config) {
+      try {
+        const jsonStr = JSON.stringify(config, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        console.error('[ComfyUI Panel] Download to local failed:', e);
+      }
+    }
+    
+    // 下载当前工作流配置
+    downloadCurrentWorkflow() {
+      try {
+        const config = this.getConfig();
+        const filename = this.currentSelectedConfig || 'workflow.json';
+        const displayName = filename.replace(/\.(json|png)$/i, '') + '_workflow.json';
+        
+        this.downloadConfigToLocal(displayName, config);
+        this.showToast(`已下载工作流: ${displayName}`);
+      } catch (e) {
+        console.error('[ComfyUI Panel] Download workflow failed:', e);
+        this.showToast('下载工作流失败');
+      }
+    }
+    
+    showNewCategoryDialog() {
+      this.elements.newCategoryDialog.classList.add('visible');
+      this.elements.newCategoryInput.value = '';
+      this.elements.newCategoryInput.focus();
+    }
+    
+    hideNewCategoryDialog() {
+      this.elements.newCategoryDialog.classList.remove('visible');
+    }
+    
+    async createNewCategory() {
+      const name = this.elements.newCategoryInput.value.trim();
+      if (!name) {
+        this.showToast('请输入分类名称');
+        return;
+      }
+      
+      try {
+        const response = await fetch(this.baseUrl + '/comfyui_panel/create_category', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+          this.showToast(`分类已创建: ${name}`);
+          this.hideNewCategoryDialog();
+          this.loadCategories();
+        } else {
+          this.showToast('创建失败: ' + result.error);
+        }
+      } catch (e) {
+        console.error('[ComfyUI Panel] Create category failed:', e);
+        this.showToast('创建分类失败');
+      }
+    }
+    
+    async deleteCategory(name) {
+      if (!confirm(`确定要删除分类 "${name}" 吗？\n该分类下的所有配置文件都将被删除！`)) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(this.baseUrl + '/comfyui_panel/delete_category', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+          this.showToast(`分类已删除: ${name}`);
+          this.loadCategories();
+        } else {
+          this.showToast('删除失败: ' + result.error);
+        }
+      } catch (e) {
+        console.error('[ComfyUI Panel] Delete category failed:', e);
+        this.showToast('删除分类失败');
+      }
+    }
+    
+    // 处理删除按钮点击 - 倒计时确认删除
+    handleDeleteClick(filename, type, btnElement) {
+      const state = this.deleteCountdownState[filename];
+      
+      // 如果已经在倒计时中，执行删除
+      if (state && state.countdown > 0) {
+        // 清除倒计时
+        clearInterval(state.timerId);
+        delete this.deleteCountdownState[filename];
+        
+        // 执行删除
+        this.deleteConfig(filename, type);
+        return;
+      }
+      
+      // 开始倒计时
+      let countdown = 5;
+      btnElement.classList.add('countdown');
+      btnElement.textContent = countdown;
+      
+      const timerId = setInterval(() => {
+        countdown--;
+        if (countdown <= 0) {
+          // 倒计时结束，恢复原状
+          clearInterval(timerId);
+          btnElement.classList.remove('countdown');
+          btnElement.textContent = '×';
+          delete this.deleteCountdownState[filename];
+        } else {
+          btnElement.textContent = countdown;
+          this.deleteCountdownState[filename] = { countdown, timerId };
+        }
+      }, 1000);
+      
+      this.deleteCountdownState[filename] = { countdown, timerId };
+    }
+    
+    async deleteConfig(filename, type) {
+      try {
+        const response = await fetch(this.baseUrl + '/comfyui_panel/delete_config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            filename,
+            category: this.currentConfigCategory
+          })
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+          this.showToast(`配置已删除: ${filename}`);
+          this.loadConfigList();
+        } else {
+          this.showToast('删除失败: ' + result.error);
+        }
+      } catch (e) {
+        console.error('[ComfyUI Panel] Delete config failed:', e);
+        this.showToast('删除配置失败');
+      }
+    }
+    
+    async pasteImageForConfig(filename) {
+      try {
+        // 请求用户粘贴图像
+        const clipboardItems = await navigator.clipboard.read();
+        
+        for (const item of clipboardItems) {
+          const imageType = item.types.find(type => type.startsWith('image/'));
+          if (imageType) {
+            const blob = await item.getType(imageType);
+            
+            // 转换为base64
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+              const imageData = e.target.result;
+              
+              try {
+                const response = await fetch(this.baseUrl + '/comfyui_panel/json_to_png', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    filename,
+                    category: this.currentConfigCategory,
+                    image: imageData
+                  })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                  this.showToast(`已转换为PNG: ${result.new_name}`);
+                  this.loadConfigList();
+                } else {
+                  this.showToast('转换失败: ' + result.error);
+                }
+              } catch (err) {
+                console.error('[ComfyUI Panel] Convert to PNG failed:', err);
+                this.showToast('转换失败');
+              }
+            };
+            reader.readAsDataURL(blob);
+            return;
+          }
+        }
+        
+        this.showToast('剪贴板中没有图像');
+      } catch (e) {
+        console.error('[ComfyUI Panel] Paste image failed:', e);
+        this.showToast('粘贴图像失败，请确保已复制图像到剪贴板');
+      }
+    }
+    
+    // 粘贴图片并嵌入配置文件（替换原有配置文件）
+    async pasteImageToConfig(filename) {
+      try {
+        // 尝试从剪贴板读取
+        let clipboardItems;
+        try {
+          clipboardItems = await navigator.clipboard.read();
+        } catch (permError) {
+          // 权限被拒绝或剪贴板API不可用
+          this.showToast('无法访问剪贴板，请确保已授予剪贴板权限');
+          return;
+        }
+        
+        let imageFound = false;
+        
+        for (const item of clipboardItems) {
+          const imageType = item.types.find(type => type.startsWith('image/'));
+          if (imageType) {
+            imageFound = true;
+            const blob = await item.getType(imageType);
+            
+            // 转换为base64
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+              const imageData = e.target.result;
+              
+              try {
+                // 先加载原配置文件的内容
+                const configUrl = `${this.baseUrl}/comfyui_panel/load_config_v2?name=${encodeURIComponent(filename)}&category=${encodeURIComponent(this.currentConfigCategory)}`;
+                const configResponse = await fetch(configUrl);
+                const configData = await configResponse.json();
+                
+                if (!configData.success) {
+                  this.showToast('无法读取原配置文件');
+                  return;
+                }
+                
+                // 将配置嵌入到图片中并保存
+                const response = await fetch(this.baseUrl + '/comfyui_panel/embed_config_to_image', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    filename: filename,
+                    category: this.currentConfigCategory,
+                    image: imageData,
+                    config: configData.config
+                  })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                  this.showToast(`已将配置嵌入图片: ${result.new_name || filename}`);
+                  this.loadConfigList();
+                } else {
+                  this.showToast('嵌入配置失败: ' + result.error);
+                }
+              } catch (err) {
+                console.error('[ComfyUI Panel] Embed config to image failed:', err);
+                this.showToast('嵌入配置失败');
+              }
+            };
+            reader.readAsDataURL(blob);
+            return;
+          }
+        }
+        
+        if (!imageFound) {
+          this.showToast('剪贴板中没有图像');
+        }
+      } catch (e) {
+        console.error('[ComfyUI Panel] Paste image to config failed:', e);
+        this.showToast('粘贴图像失败，请确保已复制图像到剪贴板');
+      }
+    }
+    
+    async saveLastUsedConfig(filename, category) {
+      try {
+        await fetch(this.baseUrl + '/comfyui_panel/save_config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: '.last_used_config.json',
+            config: { 
+              lastUsedConfig: filename, 
+              lastUsedCategory: category,
+              timestamp: Date.now() 
+            }
+          })
+        });
+      } catch (e) {
+        console.error('[ComfyUI Panel] Save last used config failed:', e);
       }
     }
   }

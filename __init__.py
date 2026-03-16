@@ -2382,11 +2382,19 @@ def setup_api():
             try:
                 data = await request.json()
                 filename = data.get("filename")
+                category = data.get("category", "")  # 分类名称
+                
                 if not filename:
                     return web.json_response({"success": False, "error": "Missing filename"})
 
                 safe_filename = os.path.basename(filename)
                 panel_dir = EXTENSION_DIR / "panel"
+                
+                # 如果有分类，则在分类文件夹中查找
+                if category:
+                    safe_category = os.path.basename(category)
+                    panel_dir = panel_dir / safe_category
+                
                 file_path = panel_dir / safe_filename
 
                 if not file_path.exists():
@@ -2394,6 +2402,582 @@ def setup_api():
 
                 os.remove(file_path)
                 return web.json_response({"success": True, "message": f"Deleted {safe_filename}"})
+
+            except Exception as e:
+                return web.json_response({"success": False, "error": str(e)})
+
+        # ---------- 分类管理 API ----------
+        @server.routes.get("/comfyui_panel/list_categories")
+        async def list_categories(request):
+            """列出所有分类（文件夹）"""
+            try:
+                panel_dir = EXTENSION_DIR / "panel"
+                if not panel_dir.exists():
+                    return web.json_response({"success": True, "categories": []})
+
+                categories = []
+                for item in panel_dir.iterdir():
+                    if item.is_dir() and not item.name.startswith('.'):
+                        # 统计文件夹中的配置文件数量
+                        config_count = len([f for f in item.iterdir() 
+                                          if f.is_file() and f.suffix.lower() in ['.json', '.png']])
+                        categories.append({
+                            "name": item.name,
+                            "count": config_count
+                        })
+
+                # 按名称排序
+                categories.sort(key=lambda x: x["name"])
+                return web.json_response({"success": True, "categories": categories})
+
+            except Exception as e:
+                return web.json_response({"success": False, "error": str(e)})
+
+        @server.routes.post("/comfyui_panel/create_category")
+        async def create_category(request):
+            """创建新分类（文件夹）"""
+            try:
+                data = await request.json()
+                name = data.get("name", "").strip()
+                
+                if not name:
+                    return web.json_response({"success": False, "error": "Category name is required"})
+                
+                # 安全处理名称，防止路径遍历
+                safe_name = os.path.basename(name)
+                if not safe_name or safe_name.startswith('.'):
+                    return web.json_response({"success": False, "error": "Invalid category name"})
+
+                panel_dir = EXTENSION_DIR / "panel"
+                panel_dir.mkdir(exist_ok=True)
+                
+                category_path = panel_dir / safe_name
+                if category_path.exists():
+                    return web.json_response({"success": False, "error": "Category already exists"})
+
+                category_path.mkdir()
+                return web.json_response({"success": True, "name": safe_name})
+
+            except Exception as e:
+                return web.json_response({"success": False, "error": str(e)})
+
+        @server.routes.post("/comfyui_panel/delete_category")
+        async def delete_category(request):
+            """删除分类（文件夹）及其所有内容"""
+            try:
+                data = await request.json()
+                name = data.get("name", "").strip()
+                
+                if not name:
+                    return web.json_response({"success": False, "error": "Category name is required"})
+
+                safe_name = os.path.basename(name)
+                panel_dir = EXTENSION_DIR / "panel"
+                category_path = panel_dir / safe_name
+
+                if not category_path.exists() or not category_path.is_dir():
+                    return web.json_response({"success": False, "error": "Category not found"})
+
+                # 删除文件夹及其所有内容
+                import shutil
+                shutil.rmtree(category_path)
+                return web.json_response({"success": True, "message": f"Deleted category: {safe_name}"})
+
+            except Exception as e:
+                return web.json_response({"success": False, "error": str(e)})
+
+        # ---------- 增强的配置列表 API ----------
+        @server.routes.get("/comfyui_panel/list_configs_v2")
+        async def list_configs_v2(request):
+            """列出指定分类下所有配置文件（支持JSON和PNG）"""
+            try:
+                category = request.query.get("category", "")  # 分类名称，空字符串表示根目录
+                
+                panel_dir = EXTENSION_DIR / "panel"
+                if category:
+                    safe_category = os.path.basename(category)
+                    panel_dir = panel_dir / safe_category
+                
+                if not panel_dir.exists():
+                    return web.json_response({"success": True, "files": [], "category": category})
+
+                # 先收集所有临时文件
+                temp_files = set()
+                for f in panel_dir.iterdir():
+                    if f.is_file() and f.name.endswith('_temp.json'):
+                        # 提取对应的PNG文件名
+                        png_name = f.name.replace('_temp.json', '.png')
+                        temp_files.add(png_name)
+
+                files = []
+                for f in panel_dir.iterdir():
+                    if f.is_file() and f.suffix.lower() in ['.json', '.png']:
+                        # 过滤掉临时文件和隐藏文件
+                        if f.name.startswith('.'):
+                            continue  # 隐藏文件（如 .last_used_config.json）
+                        if f.name.endswith('_temp.json'):
+                            continue  # PNG配置的临时JSON文件
+                        
+                        # 检查是否是嵌入JSON的PNG
+                        is_png_config = f.suffix.lower() == '.png'
+                        has_thumbnail = is_png_config
+                        
+                        # 检查是否有临时编辑文件
+                        has_temp = f.name in temp_files
+                        
+                        files.append({
+                            "name": f.name,
+                            "display": f.stem,  # 去掉扩展名用于显示
+                            "type": "png" if is_png_config else "json",
+                            "has_thumbnail": has_thumbnail,
+                            "has_temp": has_temp,  # 是否有临时编辑文件
+                            "mtime": f.stat().st_mtime,
+                            "size": f.stat().st_size
+                        })
+
+                # 按修改时间倒序排列
+                files.sort(key=lambda x: x["mtime"], reverse=True)
+                return web.json_response({
+                    "success": True, 
+                    "files": files,
+                    "category": category
+                })
+
+            except Exception as e:
+                return web.json_response({"success": False, "error": str(e)})
+
+        @server.routes.get("/comfyui_panel/list_all_configs")
+        async def list_all_configs(request):
+            """列出所有分类下的配置文件（递归，用于自动加载最新配置）"""
+            try:
+                panel_dir = EXTENSION_DIR / "panel"
+                if not panel_dir.exists():
+                    return web.json_response({"success": True, "files": []})
+
+                all_files = []
+                
+                # 递归遍历所有子目录
+                for root, dirs, files in os.walk(panel_dir):
+                    root_path = Path(root)
+                    # 计算相对路径作为分类名
+                    rel_path = root_path.relative_to(panel_dir)
+                    category = str(rel_path) if str(rel_path) != '.' else ''
+                    
+                    # 先收集临时文件
+                    temp_files = set()
+                    for f in files:
+                        if f.endswith('_temp.json'):
+                            png_name = f.replace('_temp.json', '.png')
+                            temp_files.add(png_name)
+                    
+                    for f in files:
+                        file_path = root_path / f
+                        if file_path.suffix.lower() in ['.json', '.png']:
+                            # 过滤掉临时文件和隐藏文件
+                            if f.startswith('.'):
+                                continue
+                            if f.endswith('_temp.json'):
+                                continue
+                            
+                            is_png_config = file_path.suffix.lower() == '.png'
+                            has_temp = f in temp_files
+                            
+                            all_files.append({
+                                "name": f,
+                                "display": file_path.stem,
+                                "type": "png" if is_png_config else "json",
+                                "category": category,
+                                "has_temp": has_temp,
+                                "mtime": file_path.stat().st_mtime,
+                                "size": file_path.stat().st_size
+                            })
+
+                # 按修改时间倒序排列
+                all_files.sort(key=lambda x: x["mtime"], reverse=True)
+                return web.json_response({
+                    "success": True,
+                    "files": all_files
+                })
+
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                return web.json_response({"success": False, "error": str(e)})
+
+        # ---------- PNG嵌入JSON相关 API ----------
+        @server.routes.get("/comfyui_panel/config_thumbnail")
+        async def get_config_thumbnail(request):
+            """获取PNG配置文件的缩略图"""
+            try:
+                filename = request.query.get("name")
+                category = request.query.get("category", "")
+                
+                if not filename:
+                    return web.Response(status=400, text="Missing filename")
+
+                safe_filename = os.path.basename(filename)
+                panel_dir = EXTENSION_DIR / "panel"
+                
+                if category:
+                    safe_category = os.path.basename(category)
+                    panel_dir = panel_dir / safe_category
+                
+                file_path = panel_dir / safe_filename
+
+                if not file_path.exists():
+                    return web.Response(status=404, text="File not found")
+
+                if not safe_filename.lower().endswith('.png'):
+                    return web.Response(status=400, text="Not a PNG file")
+
+                # 直接返回PNG图片数据
+                with open(file_path, 'rb') as f:
+                    image_data = f.read()
+
+                return web.Response(
+                    body=image_data,
+                    content_type='image/png',
+                    headers={
+                        'Cache-Control': 'no-cache',
+                        'Content-Disposition': f'inline; filename="{safe_filename}"'
+                    }
+                )
+
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                return web.Response(status=500, text=str(e))
+
+        @server.routes.post("/comfyui_panel/json_to_png")
+        async def json_to_png(request):
+            """将JSON配置文件转换为嵌入JSON的PNG图片"""
+            try:
+                from PIL import Image
+                import io
+                import base64
+                import zlib
+                
+                data = await request.json()
+                filename = data.get("filename")  # 原JSON文件名
+                category = data.get("category", "")
+                image_data = data.get("image")  # base64编码的图片数据
+                
+                if not filename or not image_data:
+                    return web.json_response({"success": False, "error": "Missing filename or image"})
+
+                safe_filename = os.path.basename(filename)
+                panel_dir = EXTENSION_DIR / "panel"
+                
+                if category:
+                    safe_category = os.path.basename(category)
+                    panel_dir = panel_dir / safe_category
+                
+                # 读取原JSON文件
+                json_path = panel_dir / safe_filename
+                if not json_path.exists() or not safe_filename.lower().endswith('.json'):
+                    return web.json_response({"success": False, "error": "JSON file not found"})
+
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    json_content = f.read()
+
+                # 解析base64图片数据
+                if image_data.startswith('data:image'):
+                    image_data = image_data.split(',', 1)[1]
+                
+                image_bytes = base64.b64decode(image_data)
+                img = Image.open(io.BytesIO(image_bytes))
+                
+                # 等比例缩放到最大512x512
+                max_size = 512
+                if img.width > max_size or img.height > max_size:
+                    ratio = min(max_size / img.width, max_size / img.height)
+                    new_width = int(img.width * ratio)
+                    new_height = int(img.height * ratio)
+                    img = img.resize((new_width, new_height), Image.LANCZOS)
+                
+                # 确保是RGB模式
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
+                # 将JSON嵌入PNG的tEXt chunk
+                png_filename = safe_filename.rsplit('.', 1)[0] + '.png'
+                png_path = panel_dir / png_filename
+                
+                # 创建PNG信息
+                from PIL import PngImagePlugin
+                metadata = PngImagePlugin.PngInfo()
+                # 压缩JSON数据
+                compressed_json = zlib.compress(json_content.encode('utf-8'))
+                metadata.add_text("config_json", base64.b64encode(compressed_json).decode('ascii'))
+                metadata.add_text("config_compressed", "1")
+                
+                # 保存PNG
+                img.save(png_path, "PNG", pnginfo=metadata)
+                
+                # 删除原JSON文件
+                os.remove(json_path)
+                
+                return web.json_response({
+                    "success": True,
+                    "old_name": safe_filename,
+                    "new_name": png_filename,
+                    "message": f"Converted {safe_filename} to {png_filename}"
+                })
+
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                return web.json_response({"success": False, "error": str(e)})
+
+        @server.routes.post("/comfyui_panel/embed_config_to_image")
+        async def embed_config_to_image(request):
+            """将配置嵌入到剪贴板图片中，替换原配置文件"""
+            try:
+                from PIL import Image
+                import io
+                import base64
+                import zlib
+                
+                data = await request.json()
+                filename = data.get("filename")  # 原配置文件名
+                category = data.get("category", "")
+                image_data = data.get("image")  # base64编码的图片数据
+                config = data.get("config")  # 配置数据
+                
+                if not filename or not image_data or not config:
+                    return web.json_response({"success": False, "error": "Missing filename, image or config"})
+
+                safe_filename = os.path.basename(filename)
+                panel_dir = EXTENSION_DIR / "panel"
+                
+                if category:
+                    safe_category = os.path.basename(category)
+                    panel_dir = panel_dir / safe_category
+                
+                # 确保目录存在
+                panel_dir.mkdir(parents=True, exist_ok=True)
+                
+                # 解析base64图片数据
+                if image_data.startswith('data:image'):
+                    image_data = image_data.split(',', 1)[1]
+                
+                image_bytes = base64.b64decode(image_data)
+                img = Image.open(io.BytesIO(image_bytes))
+                
+                # 等比例缩放到最大512x512
+                max_size = 512
+                if img.width > max_size or img.height > max_size:
+                    ratio = min(max_size / img.width, max_size / img.height)
+                    new_width = int(img.width * ratio)
+                    new_height = int(img.height * ratio)
+                    img = img.resize((new_width, new_height), Image.LANCZOS)
+                
+                # 确保是RGB模式
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
+                # 确定新的PNG文件名
+                base_name = safe_filename.rsplit('.', 1)[0]
+                png_filename = base_name + '.png'
+                png_path = panel_dir / png_filename
+                
+                # 创建PNG信息
+                from PIL import PngImagePlugin
+                metadata = PngImagePlugin.PngInfo()
+                # 压缩JSON数据
+                json_content = json.dumps(config, ensure_ascii=False, indent=2)
+                compressed_json = zlib.compress(json_content.encode('utf-8'))
+                metadata.add_text("config_json", base64.b64encode(compressed_json).decode('ascii'))
+                metadata.add_text("config_compressed", "1")
+                
+                # 保存PNG
+                img.save(png_path, "PNG", pnginfo=metadata)
+                
+                # 如果原文件不是PNG，删除原文件
+                old_path = panel_dir / safe_filename
+                if old_path.exists() and safe_filename.lower() != png_filename.lower():
+                    os.remove(old_path)
+                
+                return web.json_response({
+                    "success": True,
+                    "old_name": safe_filename,
+                    "new_name": png_filename,
+                    "message": f"Embedded config into {png_filename}"
+                })
+
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                return web.json_response({"success": False, "error": str(e)})
+
+        @server.routes.post("/comfyui_panel/update_png_config")
+        async def update_png_config(request):
+            """更新PNG文件中的配置数据（保留原图片）"""
+            try:
+                from PIL import Image
+                from PIL import PngImagePlugin
+                import base64
+                import zlib
+                
+                data = await request.json()
+                filename = data.get("filename")  # PNG文件名
+                category = data.get("category", "")
+                config = data.get("config")  # 新的配置数据
+                
+                if not filename or not config:
+                    return web.json_response({"success": False, "error": "Missing filename or config"})
+
+                safe_filename = os.path.basename(filename)
+                
+                # 确保是PNG文件
+                if not safe_filename.lower().endswith('.png'):
+                    return web.json_response({"success": False, "error": "Not a PNG file"})
+                
+                panel_dir = EXTENSION_DIR / "panel"
+                
+                if category:
+                    safe_category = os.path.basename(category)
+                    panel_dir = panel_dir / safe_category
+                
+                file_path = panel_dir / safe_filename
+
+                if not file_path.exists():
+                    return web.json_response({"success": False, "error": "File not found"})
+
+                # 打开原PNG图片
+                img = Image.open(file_path)
+                
+                # 确保是RGB模式
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
+                # 创建新的PNG元数据
+                metadata = PngImagePlugin.PngInfo()
+                # 压缩JSON数据
+                json_content = json.dumps(config, ensure_ascii=False, indent=2)
+                compressed_json = zlib.compress(json_content.encode('utf-8'))
+                metadata.add_text("config_json", base64.b64encode(compressed_json).decode('ascii'))
+                metadata.add_text("config_compressed", "1")
+                
+                # 保存PNG（覆盖原文件）
+                img.save(file_path, "PNG", pnginfo=metadata)
+                
+                return web.json_response({
+                    "success": True,
+                    "filename": safe_filename,
+                    "message": f"Updated config in {safe_filename}"
+                })
+
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                return web.json_response({"success": False, "error": str(e)})
+
+        # ---------- 增强的加载配置 API ----------
+        @server.routes.get("/comfyui_panel/load_config_v2")
+        async def load_config_v2(request):
+            """读取配置文件内容（支持JSON和嵌入JSON的PNG）"""
+            try:
+                import zlib
+                import base64
+                
+                filename = request.query.get("name")
+                category = request.query.get("category", "")
+                
+                if not filename:
+                    return web.json_response({"success": False, "error": "Missing filename"})
+
+                safe_filename = os.path.basename(filename)
+                panel_dir = EXTENSION_DIR / "panel"
+                
+                if category:
+                    safe_category = os.path.basename(category)
+                    panel_dir = panel_dir / safe_category
+                
+                file_path = panel_dir / safe_filename
+
+                if not file_path.exists():
+                    return web.json_response({"success": False, "error": "File not found"})
+
+                # 根据文件类型处理
+                if safe_filename.lower().endswith('.png'):
+                    # 从PNG中提取JSON
+                    from PIL import Image
+                    from PIL import PngImagePlugin
+                    
+                    img = Image.open(file_path)
+                    info = img.info or {}
+                    
+                    if "config_json" in info:
+                        json_str = info["config_json"]
+                        # 检查是否压缩
+                        if info.get("config_compressed") == "1":
+                            json_bytes = base64.b64decode(json_str)
+                            json_str = zlib.decompress(json_bytes).decode('utf-8')
+                        config = json.loads(json_str)
+                    else:
+                        return web.json_response({
+                            "success": False, 
+                            "error": "No config data found in PNG"
+                        })
+                else:
+                    # 普通JSON文件
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        config = json.load(f)
+
+                return web.json_response({
+                    "success": True,
+                    "config": config,
+                    "filename": safe_filename,
+                    "category": category
+                })
+
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                return web.json_response({"success": False, "error": str(e)})
+
+        # ---------- 增强的保存配置 API ----------
+        @server.routes.post("/comfyui_panel/save_config_v2")
+        async def save_config_v2(request):
+            """保存配置到指定分类"""
+            try:
+                data = await request.json()
+                filename = data.get("filename")
+                config = data.get("config")
+                category = data.get("category", "")  # 分类名称
+
+                if not filename or not config:
+                    return web.json_response({"success": False, "error": "Missing filename or config"})
+
+                # 确保文件名安全
+                safe_filename = os.path.basename(filename)
+                if not safe_filename.endswith(".json"):
+                    safe_filename += ".json"
+
+                # 确保 panel 目录存在
+                panel_dir = EXTENSION_DIR / "panel"
+                panel_dir.mkdir(exist_ok=True)
+                
+                # 如果有分类，创建分类文件夹
+                if category:
+                    safe_category = os.path.basename(category)
+                    category_dir = panel_dir / safe_category
+                    category_dir.mkdir(exist_ok=True)
+                    file_path = category_dir / safe_filename
+                else:
+                    file_path = panel_dir / safe_filename
+
+                # 写入文件
+                with open(file_path, "w", encoding="utf-8") as f:
+                    json.dump(config, f, indent=2, ensure_ascii=False)
+
+                return web.json_response({
+                    "success": True,
+                    "filename": safe_filename,
+                    "category": category,
+                    "message": f"Config saved to {category}/{safe_filename}" if category else f"Config saved to {safe_filename}"
+                })
 
             except Exception as e:
                 return web.json_response({"success": False, "error": str(e)})
@@ -2415,6 +2999,14 @@ def setup_api():
         print(f"[ComfyUI Panel]   - GET  /comfyui_panel/list_configs")
         print(f"[ComfyUI Panel]   - GET  /comfyui_panel/load_config")
         print(f"[ComfyUI Panel]   - POST /comfyui_panel/delete_config")
+        print(f"[ComfyUI Panel]   - GET  /comfyui_panel/list_categories")
+        print(f"[ComfyUI Panel]   - POST /comfyui_panel/create_category")
+        print(f"[ComfyUI Panel]   - POST /comfyui_panel/delete_category")
+        print(f"[ComfyUI Panel]   - GET  /comfyui_panel/list_configs_v2")
+        print(f"[ComfyUI Panel]   - GET  /comfyui_panel/load_config_v2")
+        print(f"[ComfyUI Panel]   - POST /comfyui_panel/save_config_v2")
+        print(f"[ComfyUI Panel]   - GET  /comfyui_panel/config_thumbnail")
+        print(f"[ComfyUI Panel]   - POST /comfyui_panel/json_to_png")
         return True
 
     except Exception as e:
