@@ -6,7 +6,7 @@
     @灰暗x
   </a>
 </h2>
-
+请到我b站空间获取最新版,
 **🌟 简介 | Introduction**
 ComfyUI_bsk_UI 是一个为 ComfyUI 打造的现代化、用户友好的交互界面。
 它彻底改变了 ComfyUI 原生前端繁琐的操作方式，让你能够更高效、更舒适地进行 AI 绘画工作流编排。
@@ -20,6 +20,7 @@ bsk_UI 就是为你准备的解决方案！
 ComfyUI_bsk_UI is a modern and user-friendly interface for ComfyUI,
 designed to liberate you from the cumbersome and complicated operation style of the original frontend.
 Create your AI art workflows more efficiently and comfortably!
+
 ![alt text](aa.jpg)
 ![alt text](bb.jpg)
 ✨ **核心特性** | Key Features
@@ -76,19 +77,28 @@ ComfyUI 确实是一个非常强大的工具，但它的原生交互体验实在
 
 **更新日志:**
 
-260315: 修复了已经发现的bug, 增加了很多提升使用体验的改进,
-
 260313: 修复了提示词编辑框文本错位的问题, 一些增强使用体验的小改进,
         增加了独立模式,打开comfyui_panel.html可以连接安装了这个插件的comfyui, 体验秒开前端的感觉.
 
 
-📄 **开源协议 | License
-Copyright © 2026 [@灰暗x](https://space.bilibili.com/26779709)**
+📄 **开源协议 | License**
+Copyright © 2026 [@灰暗x](https://space.bilibili.com/26779709)
 
 本项目采用 GNU Affero General Public License v3.0 (AGPLv3) 协议开源。
 
 这是一个 严格的开源协议，选择它是因为我希望这个项目能够始终保持自由和开放，不被任何人或组织用于封闭的商业用途。
 
+🙏 **致谢 | Acknowledgements**
+
+• ComfyUI: https://github.com/Comfy-Org/ComfyUI
+•硬件监控功能参考了 [Crystools](https://github.com/crystian/ComfyUI-Crystools) 的实现 (MIT License, Copyright (c) 2023 Crystian)
+• 缺失插件的查找和安装依赖插件https://github.com/Comfy-Org/ComfyUI-Manager
+• 部分svg图标用到了这个网站上分享的一些图标,https://www.svgrepo.com/
+ * Lasso Select & Paint Bucket: MIT License (Author: Esri, Denali Design)
+ * Pen Icon: CC BY License (Author: Solar Icons)
+ * Source: SVG Repo (https://www.svgrepo.com/)
+• Photo by Andrew S on Unsplash https://unsplash.com/photos/a-dog-and-a-cat-laying-in-the-grass-ouo1hbizWwo
+      
 这意味着你可以 | This means you are free to:
 
 ✅ 使用 - 在任何场景下使用本软件 | Use the software for any purpose
